@@ -140,16 +140,17 @@ python -m pip install torch gymnasium traci sumolib tensorboard
 
 ### macOS
 
+Homebrew도 없다면 먼저:
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
 **자동 (권장)** — 프로젝트 폴더에서 아래 실행. Homebrew만 있으면
 파이썬이 없어도 파이썬 → XQuartz → SUMO → 환경변수 → 패키지까지 전부 설치된다:
 ```bash
 chmod +x setup_mac.sh   # 최초 1회
 ./setup_mac.sh
 source ~/.zshrc
-```
-Homebrew도 없다면 먼저:
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
 **수동:**
