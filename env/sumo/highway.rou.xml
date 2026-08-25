@@ -1,0 +1,8 @@
+<routes>
+    <vType id="ego_type" accel="5.4" decel="5.4" maxSpeed="33.33" color="1,0,0"/>
+    <vType id="car" accel="2.5" decel="4.5" maxSpeed="27.0" sigma="0.5"/>
+    <route id="r0" edges="e0"/>
+    <flow id="traffic" type="car" route="r0" begin="0" end="3600"
+          vehsPerHour="1800"
+          departLane="random" departSpeed="random"/>
+</routes>
