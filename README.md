@@ -90,6 +90,11 @@ a = -1.0  →  최대 감속  -EGO["decel"] m/s²   (기본 5.4)
 
 ## 설치 (아무것도 설치 안 된 컴퓨터 기준)
 
+**0단계. git clone**
+```
+git clone https://github.com/bmil-ssu/Artificial-Intelligence-and-Control-for-Autonomous-Driving.git
+```
+
 ### Windows
 
 **1단계. 파이썬 설치** (이미 있으면 생략 — cmd에서 `python --version` 으로 확인)
