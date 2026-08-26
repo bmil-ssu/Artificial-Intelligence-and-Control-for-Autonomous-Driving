@@ -65,25 +65,36 @@ xcode-select --install
 
 ## 3. XQuartz 설치
 
-XQuartz를 설치한 뒤 Mac에서 로그아웃 → 로그인 또는 재부팅합니다.
-<https://www.xquartz.org/>
+XQuartz 공식 사이트에서 설치합니다.
 
-실행 및 DISPLAY 설정:
+https://www.xquartz.org/
+
+설치 후 **Mac 로그아웃 → 로그인 또는 재부팅**합니다.
+
+XQuartz 실행:
 
 ``` bash
 open -a XQuartz
-export DISPLAY="$(launchctl getenv DISPLAY)"
 ```
 
-확인:
-
-`glxinfo`와 `glxgears`가 설치되어 있다면 추가로 OpenGL 동작을 확인할 수
-있습니다.
+DISPLAY 설정 및 확인:
 
 ``` bash
-glxinfo | head -30
-glxgears
+export DISPLAY="$(launchctl getenv DISPLAY)"
+echo $DISPLAY
 ```
+
+다음처럼 `org.xquartz:0`이 포함된 경로가 출력되면 정상입니다.
+
+``` text
+/var/run/com.apple.launchd.XXXXXXXXXX/org.xquartz:0
+```
+
+> **참고:** Apple Silicon의 일부 macOS/XQuartz 환경에서는 `glxinfo` 또는
+> `glxgears` 실행 시 `BadValue (Apple-DRI)` 오류가 발생할 수 있습니다.
+> 본 가이드에서는 이후 MacPorts의 Mesa/OpenGL을 사용하여 SUMO를 직접
+> 빌드하므로, 이 단계에서는 `glxinfo`/`glxgears` 테스트를 수행하지 않고
+> 다음 단계로 진행합니다.
 
 ## 4. MacPorts 및 빌드 패키지 설치
 
