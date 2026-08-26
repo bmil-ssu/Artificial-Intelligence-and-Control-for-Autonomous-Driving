@@ -66,6 +66,8 @@ glxgears
 
 MacPorts를 설치한 뒤: <https://www.macports.org/install.php>
 
+본인 맥북의 환경설정 > 정보 > macOS에서 이름이 Tahoe일 경우 macOS Tahoe v26 설치
+
 ``` bash
 sudo port selfupdate
 sudo port install mesa +llvm fox xercesc3 proj gdal gl2ps cmake ninja
@@ -139,7 +141,9 @@ sumo --version
 
 ## 7. ARM64 Miniforge + Python 환경
 
-Apple Silicon용 `Miniforge3-MacOSX-arm64`를 설치합니다.
+Apple Silicon용 `Miniforge3-MacOSX-arm64`를 설치합니다. <https://github.com/conda-forge/miniforge/releases/tag/26.5.3-0>
+
+링크에서 Miniforge3-MacOSX-arm64.pkg 설치
 
 필요하면:
 
