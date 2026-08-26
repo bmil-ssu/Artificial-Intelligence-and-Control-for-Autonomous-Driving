@@ -1,4 +1,3 @@
-[Uploading SUMO_macOS_AppleSilicon_Setup_Final_v3.md…]()
 # macOS Apple Silicon: SUMO 1.27.1 + RL 설치 가이드
 
 Apple Silicon Mac에서 `SUMO 1.27.1`, `sumo-gui`, Python/TraCI 기반 RL
