@@ -140,6 +140,11 @@ python -m pip install torch gymnasium traci sumolib tensorboard
 
 ### macOS
 
+아래의 md 파일 따라 진행
+
+<https://github.com/bmil-ssu/Artificial-Intelligence-and-Control-for-Autonomous-Driving/blob/main/SUMO_macOS_AppleSilicon_Setup.md>
+
+<!--
 Homebrew도 없다면 먼저:
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -176,6 +181,7 @@ python3 -m pip install torch gymnasium traci sumolib tensorboard
 
 참고: `brew --prefix sumo`는 Apple Silicon이면 `/opt/homebrew/opt/sumo`,
 Intel 맥이면 `/usr/local/opt/sumo`를 반환한다 (위 명령이 알아서 처리).
+-->
 
 **공통**: 이 프로젝트의 `env/sumo_env.py`는 SUMO_HOME이 설정 안 돼 있어도
 Windows/macOS/Linux의 기본 설치 경로를 자동 탐지하므로,
