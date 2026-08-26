@@ -1,3 +1,4 @@
+[Uploading SUMO_macOS_AppleSilicon_Setup_Final_v3.md…]()
 # macOS Apple Silicon: SUMO 1.27.1 + RL 설치 가이드
 
 Apple Silicon Mac에서 `SUMO 1.27.1`, `sumo-gui`, Python/TraCI 기반 RL
@@ -249,3 +250,93 @@ python view_road.py
 macOS에서 `GLXBadContext`가 발생할 경우, SUMO GUI가
 `/opt/X11/lib/libGL`이 아니라 MacPorts의 `/opt/local/lib/libGL`을
 사용하도록 SUMO를 다시 빌드하는 것이 핵심입니다.
+
+---
+
+## Troubleshooting: MacPorts에서 Xcode 버전 오류가 발생하는 경우
+
+MacPorts 설치 중 다음과 같은 오류가 발생할 수 있습니다.
+
+```text
+Error: The installed version of Xcode (15.3) is too old to use on the installed OS version.
+Version 26.0 or later is recommended on macOS 26.
+Error: Processing of port mesa failed
+```
+
+먼저 현재 MacPorts가 어떤 개발자 도구 경로를 사용하고 있는지 확인합니다.
+
+```bash
+xcode-select -p
+xcodebuild -version
+```
+
+예를 들어 다음처럼 나온다면:
+
+```text
+/Applications/Xcode.app/Contents/Developer
+Xcode 15.3
+Build version 15E204a
+```
+
+macOS 26에서 오래된 Xcode 15.3이 선택되어 있는 상태입니다.
+
+### 1. 최신 Command Line Tools가 이미 설치되어 있는 경우
+
+먼저 Command Line Tools가 정상 설치되어 있는지 확인합니다.
+
+```bash
+clang --version
+pkgutil --pkg-info=com.apple.pkg.CLTools_Executables
+```
+
+`clang`의 Target이 `arm64-apple-darwin...`이고 CLT package 정보가 정상 출력된다면, 개발자 경로를 Command Line Tools로 변경해봅니다.
+
+```bash
+sudo xcode-select -s /Library/Developer/CommandLineTools
+```
+
+확인:
+
+```bash
+xcode-select -p
+```
+
+다음과 같이 나오면 정상입니다.
+
+```text
+/Library/Developer/CommandLineTools
+```
+
+그 다음 MacPorts 설치를 다시 시도합니다.
+
+```bash
+sudo port selfupdate
+sudo port install mesa +llvm fox xercesc3 proj gdal gl2ps cmake ninja
+```
+
+### 2. 그래도 동일한 Xcode 버전 오류가 발생하는 경우
+
+macOS 26에서 MacPorts가 여전히 오래된 Xcode를 문제로 판단한다면, 기존 Xcode 15.3 대신 **Xcode 26 이상으로 업데이트**하는 것이 가장 확실합니다.
+
+Xcode 업데이트 후:
+
+```bash
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+```
+
+확인:
+
+```bash
+xcode-select -p
+xcodebuild -version
+```
+
+그 다음 다시:
+
+```bash
+sudo port selfupdate
+sudo port install mesa +llvm fox xercesc3 proj gdal gl2ps cmake ninja
+```
+
+> 핵심: `xcode-select -p`가 `/Applications/Xcode.app/Contents/Developer`를 가리키면서 `xcodebuild -version`이 `Xcode 15.3`처럼 오래된 버전을 보여준다면, Command Line Tools로 전환하거나 Xcode를 macOS 26에 맞는 최신 버전으로 업데이트해야 합니다.
+
