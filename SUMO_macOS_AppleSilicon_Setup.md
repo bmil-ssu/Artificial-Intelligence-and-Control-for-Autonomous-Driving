@@ -46,7 +46,7 @@ pkgutil --pkg-info=com.apple.pkg.CLTools_Executables
 
 ## 3. XQuartz 설치
 
-XQuartz를 설치한 뒤 Mac에서 로그아웃 → 로그인 또는 재부팅합니다.
+XQuartz를 설치한 뒤 Mac에서 로그아웃 → 로그인 또는 재부팅합니다. <https://www.xquartz.org/>
 
 실행 및 DISPLAY 설정:
 
@@ -64,7 +64,7 @@ glxgears
 
 ## 4. MacPorts 및 빌드 패키지 설치
 
-MacPorts를 설치한 뒤:
+MacPorts를 설치한 뒤: <https://www.macports.org/install.php>
 
 ``` bash
 sudo port selfupdate
