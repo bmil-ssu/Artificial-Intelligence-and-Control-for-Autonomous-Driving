@@ -184,7 +184,7 @@ Apple Silicon용 `Miniforge3-MacOSX-arm64.pkg`를 설치합니다.
 
 링크에서 Miniforge3-MacOSX-arm64.pkg 설치
 
-필요하면:
+필요하면 (conda 켜기):
 
 ``` bash
 source ~/miniforge3/etc/profile.d/conda.sh
@@ -235,6 +235,12 @@ python -c "import torch, gymnasium, traci, sumolib; print('All imports OK')"
 ```
 
 ## 9. 실행
+
+만약 conda 활성화 안되었을 경우:
+
+``` bash
+source ~/miniforge3/etc/profile.d/conda.sh
+```
 
 ``` bash
 conda activate sumo-rl
