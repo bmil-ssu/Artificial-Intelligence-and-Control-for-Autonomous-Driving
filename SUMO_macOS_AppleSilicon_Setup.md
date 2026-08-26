@@ -32,6 +32,15 @@ Terminal을 완전히 종료 후 다시 실행합니다.
 
 ## 2. Xcode Command Line Tools
 
+먼저 설치 여부를 확인합니다.
+
+``` bash
+xcode-select -p
+```
+
+`/Library/Developer/CommandLineTools`가 나오면 이미 설치되어 있으므로
+설치를 생략합니다. 경로가 없거나 오류가 나면 다음을 실행합니다.
+
 ``` bash
 xcode-select --install
 ```
@@ -44,9 +53,20 @@ clang --version
 pkgutil --pkg-info=com.apple.pkg.CLTools_Executables
 ```
 
+MacPorts 설치 중 `receipt appears to be missing` 또는
+`Neither Xcode nor the Command Line Tools were found` 오류가 발생할 때만
+CLT를 재설치합니다.
+
+``` bash
+sudo rm -rf /Library/Developer/CommandLineTools
+sudo xcode-select --reset
+xcode-select --install
+```
+
 ## 3. XQuartz 설치
 
-XQuartz를 설치한 뒤 Mac에서 로그아웃 → 로그인 또는 재부팅합니다. <https://www.xquartz.org/>
+XQuartz를 설치한 뒤 Mac에서 로그아웃 → 로그인 또는 재부팅합니다.
+<https://www.xquartz.org/>
 
 실행 및 DISPLAY 설정:
 
@@ -57,6 +77,9 @@ export DISPLAY="$(launchctl getenv DISPLAY)"
 
 확인:
 
+`glxinfo`와 `glxgears`가 설치되어 있다면 추가로 OpenGL 동작을 확인할 수
+있습니다.
+
 ``` bash
 glxinfo | head -30
 glxgears
@@ -66,7 +89,8 @@ glxgears
 
 MacPorts를 설치한 뒤: <https://www.macports.org/install.php>
 
-본인 맥북의 환경설정 > 정보 > macOS에서 이름이 Tahoe일 경우 macOS Tahoe v26 설치
+본인 맥북의 환경설정 \> 정보 \> macOS에서 이름이 Tahoe일 경우 macOS
+Tahoe v26 설치
 
 아래 실행:
 
@@ -88,9 +112,8 @@ which fox-config
 ## 5. SUMO 1.27.1 소스 빌드
 
 ``` bash
-conda deactivate
-
 export PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
+hash -r
 
 mkdir -p ~/src
 cd ~/src
@@ -123,6 +146,8 @@ otool -L bin/sumo-gui | grep -iE 'GL|FOX'
 ```
 
 `libFOX`, `libGL`, `libGLU`가 `/opt/local/lib/...`을 가리켜야 합니다.
+`/opt/X11/lib/libGL...`이 나오면 `rm -rf build` 후 CMake 설정부터 다시
+빌드합니다.
 
 ## 6. SUMO 환경변수 설정
 
@@ -143,7 +168,8 @@ sumo --version
 
 ## 7. ARM64 Miniforge + Python 환경
 
-Apple Silicon용 `Miniforge3-MacOSX-arm64`를 설치합니다. <https://github.com/conda-forge/miniforge/releases/tag/26.5.3-0>
+Apple Silicon용 `Miniforge3-MacOSX-arm64.pkg`를 설치합니다.
+<https://github.com/conda-forge/miniforge/releases/latest>
 
 링크에서 Miniforge3-MacOSX-arm64.pkg 설치
 
@@ -156,10 +182,18 @@ source ~/miniforge3/etc/profile.d/conda.sh
 확인:
 
 ``` bash
-conda info | grep platform
+conda info | grep -E 'base environment|platform'
 ```
 
-반드시 `osx-arm64`가 나와야 합니다.
+정상 예시:
+
+``` text
+base environment : /Users/<사용자명>/miniforge3
+platform : osx-arm64
+```
+
+반드시 Miniforge 경로와 `osx-arm64`가 나와야 합니다. `osx-64`가 나오면
+그 상태에서 가상환경을 만들지 마세요.
 
 환경 생성:
 
