@@ -68,6 +68,8 @@ MacPorts를 설치한 뒤: <https://www.macports.org/install.php>
 
 본인 맥북의 환경설정 > 정보 > macOS에서 이름이 Tahoe일 경우 macOS Tahoe v26 설치
 
+아래 실행:
+
 ``` bash
 sudo port selfupdate
 sudo port install mesa +llvm fox xercesc3 proj gdal gl2ps cmake ninja
