@@ -145,7 +145,7 @@ Done
 (o_t, a_t, r_t, o_(t+1), done)
 ```
 
-형태로 저장해두면 이후에도 다시 사용할 수 있습니다.
+형태로 저장해 두면 이후에도 다시 사용할 수 있습니다.
 
 ---
 
@@ -222,8 +222,8 @@ Episode 2
 
 예:
 
+- `.npy` (주로 사용)
 - `.csv`
-- `.npz`
 - `.pkl`
 - `.pt`
 
@@ -231,33 +231,7 @@ Episode 2
 
 ---
 
-# 7. Train / Validation Dataset 분리
-
-수집한 모든 데이터를 학습에 사용하지 말고 일부는 평가용으로 남겨두는 것이 좋습니다.
-
-예:
-
-```text
-전체 Dataset
-      ↓
-80% Training
-20% Validation
-```
-
-가능하다면 timestep을 무작위로 섞어 나누는 것보다 **Episode 단위로 분리**하는 것을 권장합니다.
-
-예:
-
-```text
-Episode 1~80  → Train
-Episode 81~100 → Validation
-```
-
-이렇게 하면 거의 동일한 연속 데이터가 Train과 Validation에 동시에 들어가는 것을 줄일 수 있습니다.
-
----
-
-# 8. BC 모델
+# 7. BC 모델
 
 가장 기본적인 BC 모델은 MLP를 사용할 수 있습니다.
 
@@ -294,7 +268,7 @@ class BCPolicy(nn.Module):
 
 ---
 
-# 9. Action에 따른 Loss
+# 8. Action에 따른 Loss
 
 어떤 Loss를 사용할지는 Action의 형태에 따라 달라집니다.
 
@@ -351,7 +325,7 @@ loss_lane = F.cross_entropy(
 
 ---
 
-# 10. Hybrid Action을 사용하는 경우
+# 9. Hybrid Action을 사용하는 경우
 
 이번 프로젝트처럼
 
@@ -388,7 +362,7 @@ loss = w_acc * loss_acc + w_lane * loss_lane
 
 ---
 
-# 11. BC Training
+# 10. BC Training
 
 학습 과정은 일반적인 Supervised Learning과 같습니다.
 
@@ -429,7 +403,7 @@ Hybrid Action이라면 acceleration과 lane change loss를 각각 계산하면 �
 
 ---
 
-# 12. 학습 결과 확인
+# 11. 학습 결과 확인
 
 먼저 Training Loss가 감소하는지 확인합니다.
 
@@ -446,7 +420,7 @@ Epoch 20  Loss = 0.18
 
 ---
 
-# 13. SUMO에서 BC Policy 평가
+# 12. SUMO에서 BC Policy 평가
 
 학습이 끝나면 IDM 대신 BC Policy가 AV의 Action을 결정하도록 합니다.
 
@@ -479,7 +453,7 @@ env.step(action)
 
 ---
 
-# 14. 무엇을 평가하면 되나요?
+# 13. 무엇을 평가하면 되나요?
 
 프로젝트에서는 복잡한 평가 지표를 많이 사용할 필요는 없습니다.
 
@@ -519,7 +493,7 @@ Collision Rate
 
 ---
 
-# 15. BC의 한계
+# 14. BC의 한계
 
 BC는 Dataset에서 본 행동을 따라 하는 방법입니다.
 
@@ -551,7 +525,7 @@ Dataset에서 거의 보지 못한 State로 이동
 
 ---
 
-# 16. Dataset을 잘 모으는 것이 중요합니다
+# 15. Dataset을 잘 모으는 것이 중요합니다
 
 BC에서는 모델 구조보다 Dataset이 매우 중요합니다.
 
@@ -570,84 +544,6 @@ Lane Change = Keep
 ```
 
 뿐이라면 모델도 거의 항상 `Keep`만 출력할 수 있습니다.
-
----
-
-# 17. 추천 구현 순서
-
-```text
-1. IDM 차량 정상 주행 확인
-        ↓
-2. Observation / Action 저장
-        ↓
-3. Dataset 확인
-        ↓
-4. Train / Validation 분리
-        ↓
-5. 간단한 MLP 학습
-        ↓
-6. Training Loss 확인
-        ↓
-7. BC Policy를 SUMO에 적용
-        ↓
-8. Collision Rate / Reward 평가
-```
-
----
-
-# 18. 이번 단계의 Checklist
-
-## Dataset
-
-- [ ] IDM 차량의 주행 데이터를 저장하였다.
-- [ ] Observation과 Action의 의미가 Environment와 동일하다.
-- [ ] Train / Validation Dataset을 분리하였다.
-
-## Model
-
-- [ ] Observation을 입력으로 받는 Policy를 만들었다.
-- [ ] Acceleration에 적절한 Loss를 사용하였다.
-- [ ] Lane Change에 적절한 Loss를 사용하였다.
-- [ ] Training Loss가 정상적으로 감소한다.
-
-## Evaluation
-
-- [ ] 학습된 Policy를 SUMO에서 실행하였다.
-- [ ] Collision Rate를 측정하였다.
-- [ ] Episode Reward를 확인하였다.
-- [ ] 실제 주행이 정상적인지 `sumo-gui`에서 확인하였다.
-
----
-
-# 19. 이 단계에서 기억해야 할 것
-
-Behavior Cloning의 핵심은 매우 간단합니다.
-
-```text
-Expert Driving Data
-        ↓
-Observation → Action
-        ↓
-Supervised Learning
-        ↓
-BC Policy
-```
-
-즉,
-
-> **IDM 차량이 했던 행동을 Dataset으로 저장하고, AV가 그 행동을 따라 하도록 학습합니다.**
-
-이번 단계에서는 새로운 알고리즘을 만드는 것보다
-
-```text
-좋은 Dataset
-+
-올바른 Observation / Action
-+
-정상적으로 작동하는 BC Pipeline
-```
-
-을 만드는 것이 더 중요합니다.
 
 ---
 
