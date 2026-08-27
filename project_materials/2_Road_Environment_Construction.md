@@ -7,7 +7,7 @@
 
 # 1. 이번 단계에서 무엇을 하나요?
 
-앞 단계에서 프로젝트의 전체 방향과 구현할 도로를 정했다면, 이번 단계에서는 실제로 **차량이 움직일 수 있는 자율주행 환경**을 구성합니다.
+**차량이 움직일 수 있는 자율주행 환경**을 구성합니다.
 
 전체 흐름은 다음과 같습니다.
 
@@ -26,10 +26,6 @@ Observation / Action / Reward 정의
         ↓
 학습 가능한 Environment 완성
 ```
-
-이번 단계에서 가장 중요한 것은 아직 **좋은 RL 알고리즘을 만드는 것**이 아닙니다.
-
-먼저,
 
 > **"내가 만든 도로에서 일반 차량과 자율주행 차량이 정상적으로 움직일 수 있는 환경을 만드는 것"**
 
@@ -54,15 +50,18 @@ SUMO 환경을 구성할 때 자주 보게 되는 요소는 다음과 같습니�
 일반적으로 프로젝트 폴더에서는 다음과 같은 파일들을 사용하게 됩니다.
 
 ```text
-road_environment/
+sumo_rl/
 │
-├── road.net.xml          # 도로 Network
-├── traffic.rou.xml       # Vehicle / Route / Flow
-├── simulation.sumocfg    # SUMO 실행 설정
-└── environment.py        # TraCI를 이용한 Python 환경
+├─ env/                     ← 환경(문제 정의) 관련 전부
+│  ├─ road_config.py        도로/차량/교통류 설정 (파이썬 dict)
+│  ├─ mdp_config.py         MDP 정의: 관측·행동·보상·에피소드 길이
+│  ├─ road_builder.py       road_config → SUMO 파일 자동 생성 (netconvert)
+│  ├─ sumo_env.py           Gymnasium 환경 (TraCI로 SUMO 조종)
+│  └─ sumo/                 자동 생성되는 SUMO 파일 (직접 수정하지 말 것)
+│
+└─ utils/                   ← 알고리즘/환경에 독립적인 재사용 부품
+   └─ networks.py           build_mlp, GaussianActorCritic, CategoricalActorCritic
 ```
-
-파일 이름은 자유롭게 변경해도 됩니다.
 
 ---
 
@@ -112,7 +111,7 @@ road_environment/
 - [ ] 차량이 진입할 수 없는 끊어진 Lane이 없는가?
 - [ ] 도로 방향이 반대로 설정된 곳은 없는가?
 
-> **도로 자체에 문제가 있으면 이후의 RL 학습으로 해결할 수 없습니다.**
+> **도로 자체에 문제가 있으면 이후의 모델 학습으로 해결할 수 없습니다.**
 
 따라서 환경 구축 단계에서 충분히 확인해야 합니다.
 
@@ -130,7 +129,7 @@ road_environment/
 남쪽 진입 → 교차로 → 서쪽 진출
 ```
 
-SUMO에서는 `.rou.xml` 파일에서 차량의 Route와 Vehicle Type을 정의할 수 있습니다.
+<!--SUMO에서는 `.rou.xml` 파일에서 차량의 Route와 Vehicle Type을 정의할 수 있습니다.
 
 아래는 개념을 이해하기 위한 간단한 예시입니다.
 
@@ -178,11 +177,13 @@ route_0 경로를 따라
 ```
 
 > 위의 수치는 **예시**입니다.  
-> 실제 프로젝트에서는 자신이 만든 도로의 길이, 제한속도, 교통량에 맞게 조절해야 합니다.
+> 실제 프로젝트에서는 자신이 만든 도로의 길이, 제한속도, 교통량에 맞게 조절해야 합니다. -->
 
 ---
 
 # 5. 일반 차량(HV)을 먼저 만들어야 하는 이유
+
+도로가 제대로 만들어졌는지 확인하기 위해 HV를 먼저 도로에 배치합니다.
 
 자율주행 차량 한 대만 도로 위에 놓으면 대부분의 의사결정 문제가 너무 단순해집니다.
 
@@ -199,9 +200,7 @@ route_0 경로를 따라
 
 와 같은 행동이 거의 필요하지 않습니다.
 
-따라서 프로젝트에서는 자율주행 차량 주변에 여러 대의 **일반 차량(Human-driven Vehicle, HV)** 을 배치합니다.
-
-일반 차량들이 만들어내는 교통 흐름 속에서 AV가 적절한 행동을 선택하도록 만드는 것이 목표입니다.
+따라서 프로젝트에서는 일반 차량들이 만들어내는 교통 흐름 속에서 AV가 적절한 행동을 선택하도록 만드는 것이 목표입니다.
 
 ---
 
@@ -264,7 +263,7 @@ IDM 차량은 대표적으로 다음 정보를 이용합니다.
 
 ---
 
-# 7. IDM의 기본 아이디어
+<!-- # 7. IDM의 기본 아이디어
 
 IDM의 대표적인 가속도 모델은 다음과 같이 표현할 수 있습니다.
 
@@ -311,6 +310,7 @@ $$
 | $\delta$ | 가속 특성을 결정하는 계수 |
 
 이 수식을 직접 구현하거나 외울 필요는 없습니다.
+-->
 
 SUMO에는 IDM이 이미 구현되어 있기 때문에 프로젝트에서는
 
@@ -322,7 +322,7 @@ carFollowModel="IDM"
 
 ---
 
-# 8. IDM에서 자주 조절하는 값
+# 7. IDM에서 자주 조절하는 값
 
 SUMO에서 일반 차량의 성향을 바꾸고 싶다면 다음과 같은 값을 조절할 수 있습니다.
 
@@ -352,7 +352,7 @@ SUMO에서 일반 차량의 성향을 바꾸고 싶다면 다음과 같은 값�
 
 ---
 
-# 9. 중요: IDM은 차선 변경 모델이 아닙니다
+# 중요: IDM은 차선 변경 모델이 아닙니다
 
 여기서 한 가지 중요한 점이 있습니다.
 
@@ -395,9 +395,9 @@ SUMO에서는 예를 들어 `LC2013`과 같은 Lane-Changing Model을 사용할 
 
 ---
 
-# 10. 일반 차량 환경 확인
+# 8. 일반 차량 환경 확인
 
-일반 차량을 추가한 후에는 **AV를 넣기 전에** 교통 흐름부터 확인해야 합니다.
+일반 차량을 추가한 후에는 교통 흐름부터 확인해야 합니다.
 
 - [ ] 차량이 정상적으로 생성되는가?
 - [ ] 차량이 Route를 끝까지 따라가는가?
@@ -421,9 +421,9 @@ Route
 
 ---
 
-# 11. 이제 자율주행 차량(AV)을 추가합니다
+# 9. 이제 자율주행 차량(AV)을 추가합니다
 
-일반 차량 환경이 정상적으로 동작하면 일반 차량 중 일부를 **Autonomous Vehicle (AV)** 로 설정합니다.
+일반 차량 환경이 정상적으로 동작하면 자율주행 차량을 한 대 배치합니다.
 
 ```text
                     ┌────────────────────┐
@@ -452,7 +452,7 @@ Python과 SUMO 사이의 정보 교환에는 주로 **TraCI** 를 사용합니�
 
 ---
 
-# 12. POMDP란?
+# 10. POMDP란?
 
 자율주행 차량의 의사결정 문제는 **POMDP(Partially Observable Markov Decision Process)** 로 생각할 수 있습니다.
 
@@ -472,7 +472,7 @@ AV 주변 일정 거리
 
 ---
 
-# 13. State와 Observation의 차이
+# 11. State와 Observation의 차이
 
 처음 강화학습을 접하면 **State와 Observation**을 혼동하기 쉽습니다.
 
@@ -536,7 +536,7 @@ Rear relative speed
 
 ---
 
-# 14. POMDP의 기본 구조
+# 12. POMDP의 기본 구조
 
 한 시점 $t$에서 다음과 같이 생각하면 됩니다.
 
@@ -580,7 +580,7 @@ o_(t+1)
 
 ---
 
-# 15. Observation 설계
+# 13. Observation 설계
 
 프로젝트에서 가장 먼저 결정해야 하는 것은
 
@@ -588,43 +588,34 @@ o_(t+1)
 
 입니다.
 
-## 15.1 Ego Vehicle 정보
+## 13.1 Ego Vehicle 정보
 
 예:
 
 ```text
-Ego speed
-Ego acceleration
-Current lane
-Current road position
-Distance to goal
+내 현재 위치
+내 현재 속도
 ```
 
-## 15.2 주변 차량 정보
+## 13.2 주변 차량 정보
 
 예:
 
 ```text
-Front vehicle distance
-Front vehicle relative speed
-
-Rear vehicle distance
-Rear vehicle relative speed
-
-Left-front vehicle distance
-Left-front vehicle relative speed
-
-Left-rear vehicle distance
-Left-rear vehicle relative speed
-
-Right-front vehicle distance
-Right-front vehicle relative speed
-
-Right-rear vehicle distance
-Right-rear vehicle relative speed
+내 주변 차량과 나 사이의 상대 속도
+내 주변 차량과 나 사이의 상대 위치
 ```
 
-## 15.3 예시 Observation Vector
+## 13.3 도로 환경 정보
+
+예:
+
+```text
+내 앞 도로의 차량 밀도
+도로가 끊겨 있는지, 연결되어 있는지
+```
+
+## 13.4 예시 Observation Vector
 
 예를 들어 다음과 같은 Observation을 만들 수 있습니다.
 
@@ -632,54 +623,23 @@ $$
 o_t =
 [
 v_{\mathrm{ego}},
-a_{\mathrm{ego}},
-d_{\mathrm{front}},
-\Delta v_{\mathrm{front}},
-d_{\mathrm{rear}},
-\Delta v_{\mathrm{rear}},
-l_{\mathrm{ego}}
+p_{\mathrm{ego}},
+\Delta v,
+\Delta p,
+density,
+lane,
 ]
 $$
 
-Python에서는 개념적으로 다음과 같은 형태가 됩니다.
-
-```python
-observation = [
-    ego_speed,
-    ego_acceleration,
-    front_distance,
-    front_relative_speed,
-    rear_distance,
-    rear_relative_speed,
-    ego_lane,
-]
-```
-
 ---
 
-# 16. 주변 차량이 없으면 어떻게 하나요?
+# 14. 주변 차량이 없으면 어떻게 하나요?
 
 예를 들어 관측 범위 안에 앞 차량이 없을 수 있습니다.
 
 그런 경우 Observation의 길이가 계속 바뀌면 Neural Network에 입력하기 어렵습니다.
 
 따라서 Observation의 크기를 **항상 동일하게 유지**해야 합니다.
-
-예:
-
-```text
-앞 차량 존재
-front_distance = 12.4
-
-앞 차량 없음
-front_distance = observation_range
-```
-
-또는 별도의 Mask를 사용할 수도 있습니다.
-
-```text
-front_exists = 0 or 1
-```
 
 중요한 것은
 
@@ -689,7 +649,7 @@ front_exists = 0 or 1
 
 ---
 
-# 17. Observation Normalization
+# 15. Observation Normalization
 
 Neural Network 학습에서는 입력 값의 크기가 지나치게 다르면 학습이 어려워질 수 있습니다.
 
@@ -703,7 +663,7 @@ Lane index   = 2
 
 와 같이 값의 범위가 서로 다를 수 있습니다.
 
-따라서 필요하다면 다음과 같이 정규화할 수 있습니다.
+따라서 다음과 같이 정규화할 수 있습니다.
 
 ```python
 normalized_speed = speed / max_speed
@@ -712,7 +672,7 @@ normalized_distance = distance / observation_range
 
 ---
 
-# 18. Action 설계
+# 16. Action 설계
 
 다음으로 결정해야 하는 것은
 
@@ -720,47 +680,7 @@ normalized_distance = distance / observation_range
 
 입니다.
 
-## Option A. Discrete Action
-
-가장 단순한 방법입니다.
-
-```text
-Action 0 = Decelerate
-Action 1 = Keep
-Action 2 = Accelerate
-```
-
-차선 변경까지 포함한다면,
-
-```text
-Action 0 = Decelerate
-Action 1 = Keep
-Action 2 = Accelerate
-Action 3 = Lane Change Left
-Action 4 = Lane Change Right
-```
-
-처럼 구성할 수 있습니다.
-
-## Option B. Continuous Action
-
-가속도를 연속적인 값으로 직접 출력할 수도 있습니다.
-
-예:
-
-$$
-a_t \in [-3.0,\;2.0] \; m/s^2
-$$
-
-```text
--3.0  → 강한 감속
--1.0  → 약한 감속
- 0.0  → 현재 상태 유지
-+1.0  → 가속
-+2.0  → 강한 가속
-```
-
-## Option C. Hybrid Action
+## Hybrid Action
 
 가속도와 차선 변경을 동시에 결정할 수도 있습니다.
 
@@ -774,7 +694,7 @@ $$
 
 ```text
 Acceleration
-a_acc ∈ [-3.0, 2.0]
+a_acc ∈ [-1.0, 1.0]
 
 Lane Change
 a_lc ∈ {-1, 0, +1}
@@ -783,14 +703,9 @@ a_lc ∈ {-1, 0, +1}
  0 = Keep
 +1 = Right
 ```
-
-처음 프로젝트를 구현할 때는 Action Space를 지나치게 복잡하게 만들 필요가 없습니다.
-
-> **먼저 단순한 Action으로 전체 환경이 정상적으로 동작하는지 확인하고, 이후 확장하는 것을 권장합니다.**
-
 ---
 
-# 19. TraCI를 이용한 AV 제어
+# 17. TraCI를 이용한 AV 제어
 
 Python에서는 TraCI를 통해 SUMO 차량의 상태를 읽거나 차량을 제어할 수 있습니다.
 
@@ -856,7 +771,7 @@ SUMO에서 실제로 적용된 Action
 
 ---
 
-# 20. Reward란?
+# 18. Reward란?
 
 Reward는 자율주행 차량에게
 
@@ -880,85 +795,20 @@ Reward는 자율주행 차량에게
 
 ---
 
-# 21. Reward 설계 예시
+## 보상 정의
 
-가장 단순한 예를 생각해보겠습니다.
-
-$$
-r_t
-=
-w_p r_{\mathrm{progress}}
-+
-w_v r_{\mathrm{speed}}
--
-w_c r_{\mathrm{collision}}
-+
-w_g r_{\mathrm{goal}}
-$$
-
-각 항의 의미는 다음과 같습니다.
-
-| Reward | 의미 |
-|---|---|
-| $r_{\mathrm{progress}}$ | 목적지를 향해 진행한 정도 |
-| $r_{\mathrm{speed}}$ | 적절한 속도로 주행했는지 |
-| $r_{\mathrm{collision}}$ | 충돌 여부 |
-| $r_{\mathrm{goal}}$ | 목적지 도착 여부 |
-
-예를 들어 코드에서는 다음과 같은 형태가 될 수 있습니다.
-
-```python
-reward = 0.0
-
-reward += w_progress * progress_reward
-reward += w_speed * speed_reward
-
-if collision:
-    reward -= w_collision
-
-if reached_goal:
-    reward += w_goal
+```
+매 스텝:  + speed_weight(0.1) × (내 속도 / vmax)          ← 빠를수록 보상
+          - close_gap_penalty(0.2)  (앞차 10m 미만 접근 시) ← 위험운전 감점
+종료 시:  충돌 -5 / 완주 +2 / 시간초과(400스텝) 추가보상 없음
 ```
 
-> 위 Reward는 **예시 구조**입니다.  
-> 각 팀이 구현한 도로와 AV의 목표에 맞게 수정해야 합니다.
+이상적 에피소드 리턴 ≈ +10, 초반 충돌 시 마이너스권.
+값과 설계 이유(스케일을 왜 줄였는지)는 env/mdp_config.py의 REWARD 주석을 참고하세요.
 
 ---
 
-# 22. Reward를 너무 복잡하게 만들지 마세요
-
-처음부터 다음과 같이 너무 많은 Reward를 넣으면
-
-```text
-speed
-+ progress
-+ lane keeping
-+ comfort
-+ jerk
-+ time
-+ headway
-+ lane change
-+ traffic efficiency
-+ ...
-```
-
-차량이 왜 특정 행동을 학습했는지 분석하기 어려워집니다.
-
-처음에는 최소한의 Reward로 시작하는 것을 권장합니다.
-
-```text
-Progress
-+
-Goal
--
-Collision
-```
-
-환경이 정상적으로 학습되는 것을 확인한 다음 필요한 항목을 하나씩 추가하세요.
-
----
-
-# 23. Terminal Condition / Done
+# 19. Terminal Condition / Done
 
 Episode가 언제 종료되는지도 정의해야 합니다.
 
@@ -966,9 +816,6 @@ Episode가 언제 종료되는지도 정의해야 합니다.
 
 ```text
 Collision
-→ Episode 종료
-
-Destination 도착
 → Episode 종료
 
 Maximum Simulation Step 도달
@@ -987,7 +834,7 @@ done = (
 
 ---
 
-# 24. 하나의 Environment Step 정리
+# 20. 하나의 Environment Step 정리
 
 지금까지의 내용을 하나의 timestep으로 정리하면 다음과 같습니다.
 
@@ -1013,52 +860,7 @@ done = (
 
 ---
 
-# 25. Environment 구조 예시
-
-Gym / Gymnasium과 유사한 형태로 환경을 구성한다면 다음과 같은 구조를 사용할 수 있습니다.
-
-```python
-class AutonomousDrivingEnv:
-
-    def reset(self):
-        # SUMO simulation 초기화
-        # 차량 생성
-        # Initial observation 반환
-        ...
-
-    def get_observation(self):
-        # Ego + 주변 차량 정보를 이용하여 Observation 생성
-        ...
-
-    def apply_action(self, action):
-        # Model이 선택한 Action을 TraCI를 통해 AV에 적용
-        ...
-
-    def get_reward(self):
-        # 현재 State를 이용하여 Reward 계산
-        ...
-
-    def check_done(self):
-        # Collision / Goal / Time limit 확인
-        ...
-
-    def step(self, action):
-
-        self.apply_action(action)
-        traci.simulationStep()
-
-        observation = self.get_observation()
-        reward = self.get_reward()
-        done = self.check_done()
-
-        return observation, reward, done
-```
-
-위 코드는 **구조를 이해하기 위한 예시**이며, 수업에서 사용하는 Gym/Gymnasium 버전에 따라 실제 반환 형태는 달라질 수 있습니다.
-
----
-
-# 26. HV와 AV의 차이 정리
+# 21. HV와 AV의 차이 정리
 
 | | 일반 차량 (HV) | 자율주행 차량 (AV) |
 |---|---|---|
@@ -1079,266 +881,11 @@ AV = 우리가 학습시키려는 차량
 
 이라고 생각하면 됩니다.
 
----
-
-# 27. IDM 차량으로 데이터 수집하기
-
-일반 차량이 정상적으로 주행한다면, IDM 차량의 주행 기록을 **Demonstration Dataset**으로 사용할 수도 있습니다.
-
-예를 들어 매 timestep마다 다음 정보를 저장할 수 있습니다.
-
-```text
-Observation
-Action
-Reward
-Next Observation
-Done
-```
-
-즉,
-
-```text
-(o_t, a_t, r_t, o_(t+1), done)
-```
-
-형태의 데이터를 만들 수 있습니다.
-
-## 27.1 BC를 위한 데이터
-
-Behavior Cloning에서는 기본적으로
-
-```text
-Observation → Expert Action
-```
-
-관계를 학습합니다.
-
-따라서 IDM 차량을 Expert로 사용한다면,
-
-```text
-IDM이 어떤 상황에서
-어떤 가속 / 감속 행동을 했는가?
-```
-
-를 기록할 수 있습니다.
-
-예:
-
-| Step | Ego Speed | Front Distance | Relative Speed | Expert Acceleration |
-|---:|---:|---:|---:|---:|
-| 0 | 8.2 | 21.4 | -0.5 | 1.10 |
-| 1 | 9.1 | 18.8 | 0.3 | 0.72 |
-| 2 | 9.7 | 12.1 | 2.1 | -0.85 |
-
-이 데이터를 이용한 실제 BC 학습 방법은 다음 자료에서 다룹니다.
-
-> **3. Model Training — Behavior Cloning**
-
----
-
-# 28. 데이터 수집 시 가장 중요한 것
-
-데이터에서 사용하는 **Action의 정의와 실제 학습 모델의 Action이 일치해야 합니다.**
-
-예를 들어 AV 모델이
-
-```text
-Action = Acceleration
-```
-
-을 출력하도록 만들 예정이라면 Dataset에서도
-
-```text
-Expert Acceleration
-```
-
-을 저장해야 합니다.
-
-즉,
-
-```text
-Environment Action Space
-        =
-Dataset Action
-        =
-Model Output
-```
-
-이 되도록 설계하는 것이 가장 좋습니다.
-
----
-
-# 29. 권장 구현 순서
-
-## Phase 1 — Road
-
-```text
-NetEdit / Network 생성
-↓
-SUMO-GUI 실행
-↓
-도로 연결 확인
-```
-
-**완료 조건**
-
-> 차량이 없어도 Road Network가 정상적이다.
-
-## Phase 2 — Route
-
-```text
-Route 생성
-↓
-모든 진입 / 진출 방향 확인
-```
-
-**완료 조건**
-
-> 각 Route를 따라 차량이 목적지까지 이동할 수 있다.
-
-## Phase 3 — Human Vehicles
-
-```text
-IDM Vehicle Type 생성
-↓
-Flow 생성
-↓
-Traffic Simulation 실행
-```
-
-**완료 조건**
-
-> 일반 차량들이 안정적으로 도로를 주행한다.
-
-## Phase 4 — AV Observation
-
-```text
-AV 생성
-↓
-TraCI 연결
-↓
-Ego / 주변 차량 정보 읽기
-↓
-Observation Vector 생성
-```
-
-**완료 조건**
-
-> 매 timestep마다 고정된 크기의 Observation을 얻을 수 있다.
-
-## Phase 5 — AV Action
-
-```text
-Action 정의
-↓
-TraCI로 Action 적용
-↓
-실제 차량 움직임 확인
-```
-
-**완료 조건**
-
-> Python에서 내린 Action에 따라 AV가 움직인다.
-
-## Phase 6 — Reward / Done
-
-```text
-Reward 계산
-↓
-Collision 확인
-↓
-Goal 확인
-↓
-Episode 종료
-```
-
-**완료 조건**
-
-> 한 Episode를 처음부터 끝까지 자동으로 실행할 수 있다.
-
-## Phase 7 — Dataset
-
-```text
-Observation
-Action
-Reward
-Next Observation
-Done
-↓
-파일로 저장
-```
-
-**완료 조건**
-
-> 여러 Episode의 Trajectory를 저장할 수 있다.
-
----
-
-# 30. 추천 최소 구현
-
-처음에는 다음 정도로 시작해도 충분합니다.
-
-### Road
-
-```text
-실제 한국 도로 기반
-+
-하나 이상의 의미 있는 Junction
-```
-
-### HV
-
-```text
-IDM
-+
-여러 Route
-```
-
-### Observation
-
-```text
-Ego speed
-+
-Front distance
-+
-Front relative speed
-```
-
-### Action
-
-```text
-Continuous Acceleration
-```
-
-### Reward
-
-```text
-Progress
-+
-Goal
--
-Collision
-```
-
-이 최소 환경이 정상적으로 작동한 이후,
-
-```text
-Rear vehicle
-Adjacent lane vehicles
-Lane change
-Complex reward
-More traffic
-```
-
-등을 추가하면 됩니다.
-
----
-
-# 31. 자주 발생하는 문제
+# 자주 발생하는 문제
 
 ## Q1. 차량이 Junction에서 계속 멈춰요.
 
-먼저 RL 문제가 아니라 **Road / Connection / Route 문제**인지 확인하세요.
+**Road / Connection / Route 문제**인지 확인하세요.
 
 ```text
 Edge 연결
@@ -1393,70 +940,6 @@ laneChangeMode
 7. Done 조건이 정상인가?
 8. 그 다음 학습 알고리즘을 확인한다.
 ```
-
----
-
-# 32. 이번 단계의 최종 Checklist
-
-## Road Environment
-
-- [ ] 실제 한국 도로를 참고하여 Road Network를 구축하였다.
-- [ ] Edge / Lane / Junction / Connection이 정상적이다.
-- [ ] 모든 주요 Route가 정상적으로 연결되어 있다.
-- [ ] SUMO-GUI에서 차량이 정상적으로 이동한다.
-
-## Human-driven Vehicles
-
-- [ ] 일반 차량(HV)을 생성하였다.
-- [ ] IDM의 역할을 이해하였다.
-- [ ] Car-Following과 Lane-Changing의 차이를 이해하였다.
-- [ ] 여러 Route에서 차량이 안정적으로 주행한다.
-
-## Autonomous Vehicle
-
-- [ ] AV를 별도로 구분하였다.
-- [ ] Observation을 정의하였다.
-- [ ] 모든 timestep에서 Observation 크기가 일정하다.
-- [ ] Action Space를 정의하였다.
-- [ ] TraCI를 통해 Action을 차량에 적용할 수 있다.
-
-## POMDP
-
-- [ ] State와 Observation의 차이를 이해하였다.
-- [ ] Reward를 정의하였다.
-- [ ] Terminal Condition을 정의하였다.
-- [ ] 한 Episode가 자동으로 실행된다.
-
-## Dataset
-
-- [ ] `(observation, action, reward, next_observation, done)`을 저장할 수 있다.
-- [ ] Dataset의 Action 정의와 Model의 Action Space가 일치한다.
-
----
-
-# 33. 이 단계에서 기억해야 할 것
-
-이번 단계의 목표는 **학습 성능을 높이는 것**이 아닙니다.
-
-먼저 다음 Pipeline이 완성되어야 합니다.
-
-```text
-Road
- ↓
-Human Vehicles
- ↓
-Autonomous Vehicle
- ↓
-Observation
- ↓
-Action
- ↓
-Reward
- ↓
-Next Observation
-```
-
-즉,
 
 > **강화학습을 하기 전에 강화학습이 가능한 환경부터 완성해야 합니다.**
 
