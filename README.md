@@ -29,7 +29,7 @@
 
 ---
 
-### 팀별 진행
+### 팀별 진행 (3-5명으로 구성, 자율 building)
 
 ### 4. Model Training — Reinforcement Learning
 
