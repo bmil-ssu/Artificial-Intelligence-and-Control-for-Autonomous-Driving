@@ -7,7 +7,7 @@
 
 # 1. 이번 단계에서 무엇을 하나요?
 
-앞 단계에서는 IDM 차량의 주행 데이터를 이용하여 **Behavior Cloning (BC)** 모델을 학습했습니다.
+지난 수업에서는 IDM 차량의 주행 데이터를 이용하여 **Behavior Cloning (BC)** 모델을 학습했습니다.
 
 이번에는 미리 수집된 Action을 따라 하는 것이 아니라,
 
@@ -69,7 +69,7 @@ SUMO에서 실제로 움직인 뒤
 
 # 3. Behavior Cloning과 무엇이 다른가요?
 
-Behavior Cloning은 Dataset에 있는 Expert Action을 따라 하도록 학습합니다.
+Behavior Cloning은 Dataset에 있는 Action을 따라 하도록 학습합니다.
 
 ```text
 Observation
@@ -209,43 +209,7 @@ r_1
 
 ---
 
-# 7. Reward가 가장 중요합니다
-
-RL에서는 Expert Action이 없기 때문에 **Reward가 학습 방향을 결정**합니다.
-
-앞에서 정의한 Reward를 그대로 사용할 수 있습니다.
-
-예:
-
-```text
-매 Step
-+ 빠르고 안정적으로 진행하면 Reward
-
-위험한 거리
-- Penalty
-
-충돌
-- Large Penalty
-```
-
-예를 들어 프로젝트 환경에서는 다음과 같이 구성할 수 있습니다.
-
-```text
-+ speed reward
-- close gap penalty
-- collision penalty
-+ completion reward
-```
-
-중요한 것은 Reward의 각 항이
-
-> **"AV에게 어떤 행동을 하라고 유도하는가?"**
-
-를 생각하면서 설계하는 것입니다.
-
----
-
-# 8. Reward가 잘못 설계되면 어떻게 되나요?
+# 7. Reward가 잘못 설계되면 어떻게 되나요?
 
 RL Agent는 우리가 의도한 행동이 아니라  
 **Reward를 가장 많이 받는 행동**을 학습합니다.
@@ -280,7 +244,7 @@ RL Agent는 우리가 의도한 행동이 아니라
 
 ---
 
-# 9. Policy Model
+# 8. Policy Model
 
 RL Policy도 BC와 마찬가지로 Observation을 입력으로 받습니다.
 
@@ -297,57 +261,9 @@ RL 알고리즘의 학습 규칙에 따라 Policy가 업데이트됩니다.
 
 ---
 
-# 10. Action Space에 따른 RL 알고리즘
+# 9. Action Space에 따른 RL 알고리즘
 
 Action 형태에 따라 사용할 수 있는 RL 알고리즘이 달라질 수 있습니다.
-
-## Discrete Action
-
-예:
-
-```text
-Accelerate
-Keep
-Decelerate
-```
-
-또는
-
-```text
-Left
-Keep
-Right
-```
-
-와 같은 discrete action에는 다음과 같은 알고리즘을 사용할 수 있습니다.
-
-```text
-DQN
-PPO
-...
-```
-
----
-
-## Continuous Action
-
-예:
-
-```text
-Acceleration ∈ [-1, 1]
-```
-
-처럼 연속적인 값을 출력하는 경우에는 다음과 같은 알고리즘을 사용할 수 있습니다.
-
-```text
-DDPG
-TD3
-SAC
-PPO
-...
-```
-
----
 
 ## Hybrid Action
 
@@ -367,12 +283,9 @@ Lane Change
 → Discrete
 ```
 
-프로젝트에서는 **수업에서 제공하는 기본 알고리즘과 환경 구조를 우선 사용**하고,  
-추가 알고리즘 적용은 선택적으로 진행하면 됩니다.
-
 ---
 
-# 11. Exploration이 필요한 이유
+# 10. Exploration이 필요한 이유
 
 BC는 Expert Action을 그대로 학습하지만, RL은 Agent가 직접 행동을 시도해야 합니다.
 
@@ -404,7 +317,7 @@ Exploration
 
 ---
 
-# 12. Replay Buffer
+# 11. Replay Buffer
 
 DDPG, TD3, SAC와 같은 **Off-policy RL**에서는 학습 중 생성된 Transition을 Replay Buffer에 저장할 수 있습니다.
 
@@ -444,7 +357,7 @@ RL에서는 **주행하면서 Dataset이 계속 만들어진다**고 생각할 �
 
 ---
 
-# 13. Online RL Training
+# 12. Online RL Training
 
 전체 학습 과정은 다음과 같이 생각하면 됩니다.
 
@@ -501,7 +414,7 @@ for episode in range(num_episodes):
 
 ---
 
-# 14. Training과 Evaluation을 구분하세요
+# 13. Training과 Evaluation을 구분하세요
 
 학습 중에는 Exploration이 포함될 수 있습니다.
 
@@ -531,7 +444,7 @@ Action
 
 ---
 
-# 15. 무엇을 평가하면 되나요?
+# 14. 무엇을 평가하면 되나요?
 
 BC와 동일하게 복잡한 지표를 많이 사용할 필요는 없습니다.
 
@@ -578,7 +491,7 @@ r_0 + r_1 + r_2 + ... + r_T
 
 ---
 
-# 16. Learning Curve
+# 15. Learning Curve
 
 RL 학습 과정에서는 Reward의 변화를 그래프로 확인하는 것이 좋습니다.
 
@@ -606,7 +519,7 @@ Episode Reward
 
 ---
 
-# 17. 학습이 잘 안 될 때 확인할 것
+# 16. 학습이 잘 안 될 때 확인할 것
 
 RL 성능이 좋지 않다고 해서 바로 알고리즘을 바꾸지 마세요.
 
@@ -635,7 +548,7 @@ Reward
 
 ---
 
-# 18. BC 모델을 초기 Policy로 사용할 수도 있습니다
+# 17. BC 모델을 초기 Policy로 사용할 수도 있습니다
 
 앞 단계에서 BC Policy를 학습했다면 이를 RL의 초기 Policy로 사용할 수도 있습니다.
 
@@ -659,7 +572,7 @@ Policy Fine-tuning
 
 ---
 
-# 19. BC와 RL 결과 비교
+# 18. BC와 RL 결과 비교
 
 BC와 RL을 모두 학습했다면 같은 환경에서 비교할 수 있습니다.
 
@@ -685,7 +598,7 @@ BC와 RL을 모두 학습했다면 같은 환경에서 비교할 수 있습니�
 
 ---
 
-# 20. 프로젝트에서 중요한 것
+# 19. 프로젝트에서 중요한 것
 
 이번 프로젝트에서 목표는 새로운 RL 알고리즘을 개발하는 것이 아닙니다.
 
@@ -706,71 +619,3 @@ BC와 RL을 모두 학습했다면 같은 환경에서 비교할 수 있습니�
 입니다.
 
 추가적인 RL 알고리즘 적용이나 성능 개선은 **Bonus**로 진행할 수 있습니다.
-
----
-
-# 21. 이번 단계의 Checklist
-
-## Environment
-
-- [ ] Observation이 정상적으로 생성된다.
-- [ ] Action이 AV에 정상적으로 적용된다.
-- [ ] Reward가 의도한 대로 계산된다.
-- [ ] Episode 종료 조건이 정상적으로 동작한다.
-
-## Training
-
-- [ ] SUMO와 반복적으로 interaction할 수 있다.
-- [ ] `(o, a, r, o', done)` Transition이 정상적으로 생성된다.
-- [ ] RL Policy가 정상적으로 update된다.
-- [ ] Episode Reward를 기록할 수 있다.
-
-## Evaluation
-
-- [ ] 학습된 Policy를 별도로 Evaluation하였다.
-- [ ] Collision Rate를 측정하였다.
-- [ ] Episode Reward를 측정하였다.
-- [ ] `sumo-gui`에서 실제 주행을 확인하였다.
-- [ ] BC와 RL 결과를 비교할 수 있다.
-
----
-
-# 22. 이 단계에서 기억해야 할 것
-
-Reinforcement Learning의 핵심 흐름은 다음과 같습니다.
-
-```text
-Observation
-    ↓
-Policy
-    ↓
-Action
-    ↓
-Environment
-    ↓
-Reward
-    ↓
-Policy Update
-```
-
-즉,
-
-> **AV가 직접 SUMO 환경에서 주행하면서 어떤 행동이 좋은 행동인지 Reward를 통해 학습합니다.**
-
-이번 단계에서 가장 중요한 것은
-
-```text
-복잡한 RL 알고리즘
-```
-
-이 아니라,
-
-```text
-정상적인 Environment
-+
-올바른 Reward
-+
-안정적인 Training Pipeline
-```
-
-을 만드는 것입니다.
