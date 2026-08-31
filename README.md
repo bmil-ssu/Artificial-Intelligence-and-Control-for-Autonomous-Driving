@@ -37,13 +37,13 @@
 
 ### 팀별 진행 (3-5명으로 구성, 자율 building)
 
-### 4. Model Training — Reinforcement Learning
+### 4. Project Preparation
 
-- [강화학습 기반 자율주행 의사결정 모델 학습](./project_materials/4_Model_Training_RL.md)
+- [프로젝트 진행을 위한 코드 소개](./project_materials/4_Project_Preparation.md)
 
-### 5. Project Preparation
+### 5. Model Training — Reinforcement Learning
 
-- [프로젝트 진행을 위한 코드 소개](./project_materials/5_Project_Preparation.md)
+- [강화학습 기반 자율주행 의사결정 모델 학습](./project_materials/5_Model_Training_RL.md)
 
 ### 이후. 팀별 프로젝트 진행
 
