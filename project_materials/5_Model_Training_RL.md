@@ -1,4 +1,4 @@
-# 4. Model Training — Reinforcement Learning
+# 5. Model Training — Reinforcement Learning
 
 > **목표:** SUMO 환경과 직접 상호작용하면서 Reward를 이용해  
 > 자율주행 차량(AV)의 의사결정 Policy를 학습합니다.
