@@ -25,6 +25,10 @@
 
 - [도로 및 모델 POMDP 구조 이해](./project_materials/2_Road_Environment_Construction.md)
 
+---
+
+### 최대 2명 진행
+
 ### 3. Model Training — Behavior Cloning
 
 - [모방학습 기반 자율주행 의사결정 모델 학습](./project_materials/3_Model_Training_BC.md)
