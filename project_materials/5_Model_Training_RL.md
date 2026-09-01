@@ -1,15 +1,15 @@
 # 5. Model Training — Reinforcement Learning
 
 > **목표:** SUMO 환경과 직접 상호작용하면서 Reward를 이용해  
-> 자율주행 차량(AV)의 의사결정 Policy를 학습합니다.
+> 자율주행 차량(AV)의 의사결정 Policy 학습
 
 ---
 
-# 1. 이번 단계에서 무엇을 하나요?
+# 1. 목표
 
 지난 수업에서는 IDM 차량의 주행 데이터를 이용하여 **Behavior Cloning (BC)** 모델을 학습했습니다.
 
-이번에는 미리 수집된 Action을 따라 하는 것이 아니라,
+이번에는
 
 > **AV가 SUMO 환경에서 직접 행동하고, 그 결과로 받은 Reward를 이용해 Policy를 학습합니다.**
 
@@ -37,8 +37,6 @@ Policy Update
 
 **Reinforcement Learning (RL)** 은 Agent가 Environment와 반복적으로 상호작용하면서  
 높은 Reward를 받을 수 있는 행동을 학습하는 방법입니다.
-
-이번 프로젝트에서는 다음과 같이 대응할 수 있습니다.
 
 | RL 구성 요소 | 프로젝트에서의 의미 |
 |---|---|
@@ -69,7 +67,7 @@ SUMO에서 실제로 움직인 뒤
 
 # 3. Behavior Cloning과 무엇이 다른가요?
 
-Behavior Cloning은 Dataset에 있는 Action을 따라 하도록 학습합니다.
+Behavior Cloning은 Dataset에 있는 Action을 따라하도록 학습합니다.
 
 ```text
 Observation
@@ -158,16 +156,6 @@ Done
 7. Done 여부 확인
 ```
 
-Python에서는 개념적으로 다음과 같은 형태가 됩니다.
-
-```python
-observation = env.get_observation()
-
-action = policy(observation)
-
-next_observation, reward, done = env.step(action)
-```
-
 이 과정이 Episode가 끝날 때까지 반복됩니다.
 
 ---
@@ -240,7 +228,7 @@ RL Agent는 우리가 의도한 행동이 아니라
 
 처럼 차량이 거의 움직이지 않는 Policy를 학습할 수도 있습니다.
 
-따라서 학습 결과가 이상하다면 **알고리즘뿐 아니라 Reward부터 확인**해야 합니다.
+따라서 학습 결과가 이상하다면 **알고리즘뿐 아니라 Reward도 확인**해야 합니다.
 
 ---
 
@@ -266,8 +254,6 @@ RL 알고리즘의 학습 규칙에 따라 Policy가 업데이트됩니다.
 Action 형태에 따라 사용할 수 있는 RL 알고리즘이 달라질 수 있습니다.
 
 ## Hybrid Action
-
-이번 프로젝트처럼
 
 ```text
 Acceleration + Lane Change
@@ -446,8 +432,6 @@ Action
 
 # 14. 무엇을 평가하면 되나요?
 
-BC와 동일하게 복잡한 지표를 많이 사용할 필요는 없습니다.
-
 ## 1. Collision Rate
 
 ```text
@@ -533,7 +517,7 @@ RL 성능이 좋지 않다고 해서 바로 알고리즘을 바꾸지 마세요.
 5. Action이 실제 AV에 적용되는가?
 6. Reward가 의도대로 계산되는가?
 7. Done 조건이 올바른가?
-8. 그 다음 RL 학습 설정을 확인한다.
+8. 그 다음 RL 학습 설정을 확인
 ```
 
 특히
@@ -548,31 +532,7 @@ Reward
 
 ---
 
-# 17. BC 모델을 초기 Policy로 사용할 수도 있습니다
-
-앞 단계에서 BC Policy를 학습했다면 이를 RL의 초기 Policy로 사용할 수도 있습니다.
-
-```text
-IDM Dataset
-      ↓
-Behavior Cloning
-      ↓
-BC Policy
-      ↓
-Online RL
-      ↓
-Policy Fine-tuning
-```
-
-이렇게 하면 완전히 Random한 Policy에서 시작하는 것보다 초기 주행이 안정적일 수 있습니다.
-
-이 방법은 **선택 사항**입니다.
-
-기본 프로젝트에서는 BC와 RL을 각각 학습하고 비교해도 충분합니다.
-
----
-
-# 18. BC와 RL 결과 비교
+# 17. BC와 RL 결과 비교
 
 BC와 RL을 모두 학습했다면 같은 환경에서 비교할 수 있습니다.
 
@@ -598,7 +558,7 @@ BC와 RL을 모두 학습했다면 같은 환경에서 비교할 수 있습니�
 
 ---
 
-# 19. 프로젝트에서 중요한 것
+# 18. 프로젝트에서 중요한 것
 
 이번 프로젝트에서 목표는 새로운 RL 알고리즘을 개발하는 것이 아닙니다.
 
