@@ -107,7 +107,7 @@ sumo --version
 
 
 ```bash
-cd Artificial-Intelligence-and-Control-for-Autonomous-Driving/
+cd ~/Artificial-Intelligence-and-Control-for-Autonomous-Driving
 python view_road.py
 ```
 
