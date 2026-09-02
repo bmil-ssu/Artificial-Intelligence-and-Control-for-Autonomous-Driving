@@ -105,7 +105,9 @@ sumo --version
 
 그 다음 프로젝트 폴더로 이동한 뒤 도로 GUI가 정상적으로 실행되는지 확인합니다.
 
+
 ```bash
+cd Artificial-Intelligence-and-Control-for-Autonomous-Driving/
 python view_road.py
 ```
 
