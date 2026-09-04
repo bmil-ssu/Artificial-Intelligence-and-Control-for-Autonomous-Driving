@@ -139,6 +139,35 @@ SUMO GUI에서 확인
 
 `env/sumo/` 내부의 XML 파일은 자동으로 다시 생성될 수 있으므로, 직접 수정하기보다 `road_config.py`를 수정하는 것을 권장
 
+
+## 3.3 도로 모양 자체를 바꾸고 싶은 경우
+
+도로 길이, 차선 수처럼 **기존 도로의 값만 변경**하는 경우에는 주로 `road_config.py`를 수정하면 됨
+
+하지만 합류, 분기, 곡선, 교차로처럼 **도로의 형태(Topology) 자체를 변경**하려면 Node, Edge, Connection 구조도 함께 바뀌어야 함
+
+```text
+단순 값 변경
+예: 도로 길이 / 차선 수 / 제한속도
+        ↓
+road_config.py 수정
+
+도로 형태 변경
+예: 합류 / 분기 / 곡선 / 교차로
+        ↓
+road_config.py의 도로 구조 설정
+        +
+road_builder.py의 Node / Edge / Connection 생성 방식 확인
+        ↓
+python view_road.py
+        ↓
+SUMO GUI에서 결과 확인
+```
+
+예를 들어 직선 도로에 합류 구간을 추가한다면 새로운 도로 구간과 Junction이 필요하므로 `road_builder.py`에서 실제 SUMO Network가 어떻게 생성되는지 함께 확인해야 함
+
+> **정리:** 길이·차선 수 등은 `road_config.py`, 도로 모양과 연결 구조 자체를 바꾸는 경우에는 `road_config.py`와 `road_builder.py`를 함께 확인
+
 ---
 
 # 4. `road_builder.py` — SUMO 파일 자동 생성
@@ -152,8 +181,6 @@ road_builder.py
        ↓
 SUMO XML / Configuration files
 ```
-
-일반적인 실습에서는 `road_builder.py` 자체보다 `road_config.py`의 설정값 수정
 
 > **주의:** `env/sumo/`에 직접 수정한 내용은 다음 생성 시 덮어쓰여질 수 있음
 
