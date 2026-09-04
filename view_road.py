@@ -103,9 +103,10 @@ if __name__ == "__main__":
         #                 GUI 상단 Delay 입력칸에서 실행 중에도 바꿀 수 있다.
         print("sumo-gui 실행 중...")
         print("  · 창이 뜨면 도로만 보입니다. ▶(플레이) 버튼을 눌러야 차가 움직입니다.")
+        print(f"  · 확대: env/mdp_config.py의 gui_zoom={SIMULATION['gui_zoom']}")
         print("  · 속도 조절: 상단 Delay(ms) 값을 조정 (크게 = 느리게)")
         print("  · 종료하려면 창을 닫으세요.")
         subprocess.run(
             [checkBinary("sumo-gui"), "-c", sumocfg,
              "--step-length", str(SIMULATION["step_length"]),
-             "--delay", "100"])
+             "--delay", str(SIMULATION["gui_delay"])])

@@ -12,7 +12,7 @@ import glob
 import os
 
 from env.road_config import ROAD, EGO, TRAFFIC
-from env.mdp_config import SIMULATION, OBSERVATION, ACTION, REWARD
+from env.mdp_config import SIMULATION, OBSERVATION, ACTION
 from env import road_builder
 from env.sumo_env import SumoHighwayEnv
 
@@ -21,7 +21,7 @@ from utils.evaluator import evaluate_policy
 
 # train.py와 동일한 네트워크 구조로 만들어야 가중치를 불러올 수 있으므로
 # 하이퍼파라미터를 그대로 가져온다 (구조 관련 항목만 실제로 쓰임).
-from train import HPARAMS, RESULTS_DIR
+from train import HPARAMS, RESULTS_DIR, REWARD  # ← 보상도 train과 동일 조건
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
@@ -62,6 +62,7 @@ if __name__ == "__main__":
         road=ROAD, ego=EGO,
         mdp_sim=SIMULATION, mdp_obs=OBSERVATION,
         action=ACTION, reward=REWARD,
+        traffic=TRAFFIC,
         gui=not args.nogui,
         gui_autostart=False,   # ▶(플레이) 버튼을 눌러야 에피소드 시작
     )
@@ -73,7 +74,14 @@ if __name__ == "__main__":
     agent = PPO(obs_dim=env.observation_space.shape[0],
                 act_dim=env.action_space.shape[0],
                 **HPARAMS)
-    agent.load(model_path)
+    try:
+        agent.load(model_path)
+    except RuntimeError as e:
+        raise RuntimeError(
+            "모델의 action dimension이 현재 환경과 맞지 않습니다. "
+            "차선변경 action 추가 전의 기존 model.pt라면 새 설정으로 "
+            "python train.py를 실행해 다시 학습하세요."
+        ) from e
 
     # 평가 로직은 utils/evaluator.py 에 있다 (학습 중 평가와 완전히 동일한 코드)
     metrics = evaluate_policy(agent, env, n_episodes=args.episodes,
@@ -88,5 +96,6 @@ if __name__ == "__main__":
           f"({metrics.mean_speed * 3.6:.1f} km/h)")
     print(f"  평균 차간거리: {metrics.mean_gap:.2f} m")
     print(f"  최소 차간거리: {metrics.min_gap:.2f} m")
+    print(f"  차선변경     : {metrics.ep_lane_changes:.1f} 회/에피소드")
     print(f"  평균 보상    : {metrics.ep_return:.2f}")
     print(f"  평균 길이    : {metrics.ep_length:.0f} 스텝")

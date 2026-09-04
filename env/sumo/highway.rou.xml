@@ -1,8 +1,13 @@
 <routes>
-    <vType id="ego_type" accel="5.4" decel="5.4" maxSpeed="33.33" color="1,0,0"/>
-    <vType id="car" accel="2.5" decel="4.5" maxSpeed="27.0" sigma="0.5"/>
+    <vType id="ego_type" accel="5.4" decel="5.4" maxSpeed="33.33" color="1,0,0" vClass="passenger" guiShape="passenger/sedan"/>
+    <vTypeDistribution id="carDist">
+        <vType id="car_krauss" probability="0.3500" carFollowModel="Krauss" accel="2.0" decel="4.5" tau="1.0" minGap="2.5" maxSpeed="14.0" speedDev="0.15" color="1,1,0" vClass="passenger" guiShape="passenger/sedan" sigma="0.3" lcStrategic="0" lcCooperative="0" lcSpeedGain="0" lcKeepRight="0"/>
+        <vType id="car_idm" probability="0.3000" carFollowModel="IDM" accel="1.8" decel="3.5" tau="1.2" minGap="2.0" maxSpeed="16.0" speedDev="0.1" color="0,1,1" vClass="passenger" guiShape="passenger/sedan" lcStrategic="0" lcCooperative="0" lcSpeedGain="0" lcKeepRight="0"/>
+        <vType id="car_eidm" probability="0.2000" carFollowModel="EIDM" accel="2.0" decel="4.0" tau="1.1" minGap="2.0" maxSpeed="16.5" speedDev="0.1" color="1,0.6,0" vClass="passenger" guiShape="passenger/sedan" lcStrategic="0" lcCooperative="0" lcSpeedGain="0" lcKeepRight="0"/>
+        <vType id="car_acc" probability="0.1500" carFollowModel="ACC" accel="2.0" decel="4.0" tau="1.5" minGap="2.0" maxSpeed="19.0" speedDev="0.05" color="1,0,1" vClass="passenger" guiShape="passenger/sedan" lcStrategic="0" lcCooperative="0" lcSpeedGain="0" lcKeepRight="0"/>
+    </vTypeDistribution>
     <route id="r0" edges="e0"/>
-    <flow id="traffic" type="car" route="r0" begin="0" end="3600"
-          vehsPerHour="1800"
-          departLane="random" departSpeed="random"/>
+    <flow id="traffic" type="carDist" route="r0" begin="0" end="100000"
+          period="3.00"
+          departLane="random" departSpeed="8.0"/>
 </routes>

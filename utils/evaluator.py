@@ -26,6 +26,9 @@ class DrivingMetrics:
     min_gap: float          # 관측된 최소 차간거리 (m) — 위험 운전 지표
     ep_return: float        # 에피소드당 평균 누적 보상
     ep_length: float        # 에피소드당 평균 스텝 수
+    lane_changes: float     # 에피소드당 평균 "실행된" 차선변경 횟수
+                            # (추월 시나리오에서 정책이 실제로 차선을
+                            #  활용하는지 보는 핵심 지표)
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -37,6 +40,7 @@ class DrivingMetrics:
                 f"평균속도={self.mean_speed:.1f}m/s  "
                 f"평균차간={self.mean_gap:.1f}m  "
                 f"최소차간={self.min_gap:.1f}m  "
+                f"차선변경={self.lane_changes:.1f}회  "
                 f"보상={self.ep_return:.1f}")
 
 
@@ -56,11 +60,12 @@ def evaluate_policy(policy, env, n_episodes: int = 5,
         관측(obs) 벡터의 구성과 무관하므로, 관측을 바꿔도 이 코드는 안 깨진다.
     """
     n_collide, n_arrive, n_timeout = 0, 0, 0
-    speeds, gaps, returns, lengths = [], [], [], []
+    speeds, gaps, returns, lengths, lane_changes = [], [], [], [], []
 
     for _ in range(n_episodes):
         obs, _ = env.reset()
         done, ep_ret, ep_len = False, 0.0, 0
+        ep_lc = 0
         ended_by = None
 
         while not done:
@@ -69,6 +74,10 @@ def evaluate_policy(policy, env, n_episodes: int = 5,
             ep_ret += reward
             ep_len += 1
             done = terminated or truncated
+
+            # 실행된 차선변경 집계 (유지 명령의 changeLane 핀 동작은 제외)
+            if info.get("lane_change", 0) != 0 and info.get("lane_change_applied"):
+                ep_lc += 1
 
             if info.get("collided"):
                 ended_by = "collision"
@@ -92,6 +101,7 @@ def evaluate_policy(policy, env, n_episodes: int = 5,
 
         returns.append(ep_ret)
         lengths.append(ep_len)
+        lane_changes.append(ep_lc)
 
     return DrivingMetrics(
         collision_rate=n_collide / n_episodes,
@@ -102,4 +112,5 @@ def evaluate_policy(policy, env, n_episodes: int = 5,
         min_gap=float(np.min(gaps)) if gaps else float(env.visibility),
         ep_return=float(np.mean(returns)),
         ep_length=float(np.mean(lengths)),
+        lane_changes=float(np.mean(lane_changes)),
     )

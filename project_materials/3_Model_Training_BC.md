@@ -1,11 +1,11 @@
-# 3. Model Training — Imitation Learning
+# 3. Model Training — Behavior Cloning
 
 > **목표:** IDM 기반 일반 차량의 주행 데이터를 수집하고,  
-> 해당 데이터를 이용해 자율주행 차량의 의사결정 모델 학습
+> 해당 데이터를 이용해 자율주행 차량의 의사결정 모델을 학습합니다.
 
 ---
 
-# 1. 목표
+# 1. 이번 단계에서 무엇을 하나요?
 
 앞 단계에서는 SUMO 도로 환경을 만들고,
 
@@ -17,7 +17,7 @@
 
 이번에는 **일반 차량(HV)의 주행 데이터를 이용하여 자율주행 차량(AV)의 Policy를 학습**합니다.
 
-전체 흐름
+전체 흐름은 다음과 같습니다.
 
 ```text
 IDM 차량 주행
@@ -39,7 +39,7 @@ SUMO에서 AV 주행 평가
 
 **Behavior Cloning (BC)** 은 전문가의 행동을 그대로 따라 하도록 학습하는 가장 기본적인 **Imitation Learning** 방법입니다.
 
-이번 프로젝트에서는 SUMO의 IDM 차량을 Expert처럼 사용할 수 있습니다.
+이번 프로젝트에서는 SUMO의 IDM 차량을 전문가(Expert)처럼 사용할 수 있습니다.
 
 예를 들어 IDM 차량이
 
@@ -85,7 +85,16 @@ Expert Action
 
 BC는 강화학습보다 구조가 단순합니다.
 
-이미 수집된 Dataset을 이용해
+강화학습처럼
+
+```text
+환경과 반복적으로 상호작용
+Reward를 이용한 Policy Update
+```
+
+를 수행하지 않습니다.
+
+대신 이미 수집된 Dataset을 이용해
 
 ```text
 Observation → Action
@@ -253,6 +262,8 @@ class BCPolicy(nn.Module):
         return self.net(obs)
 ```
 
+모델을 복잡하게 만드는 것이 이번 단계의 목표는 아닙니다.
+
 > **단순한 MLP로도 전체 BC Pipeline이 정상적으로 동작하는지 확인하는 것이 먼저입니다.**
 
 ---
@@ -405,13 +416,13 @@ Epoch 20  Loss = 0.18
 
 하지만 Loss가 낮다고 해서 실제 주행을 잘한다는 의미는 아닙니다.
 
-반드시!! 학습된 모델을 다시 SUMO 환경에 넣어 평가해야 합니다.
+반드시 학습된 모델을 다시 SUMO 환경에 넣어 평가해야 합니다.
 
 ---
 
 # 12. SUMO에서 BC Policy 평가
 
-학습이 끝나면 AV 차량에 학습된 모델을 불러와서 AV의 Action을 결정하도록 합니다.
+학습이 끝나면 IDM 대신 BC Policy가 AV의 Action을 결정하도록 합니다.
 
 ```text
 SUMO
@@ -506,6 +517,8 @@ Dataset에서 거의 보지 못한 State로 이동
 
 이를 **Distribution Shift** 문제라고 합니다.
 
+이번 프로젝트에서는 이론을 깊게 다루기보다,
+
 > **BC는 Dataset의 품질과 다양성에 크게 영향을 받는다**
 
 정도로 이해하면 충분합니다.
@@ -514,7 +527,7 @@ Dataset에서 거의 보지 못한 State로 이동
 
 # 15. Dataset을 잘 모으는 것이 중요합니다
 
-BC에서는 모델 구조보다 Dataset이 중요합니다.
+BC에서는 모델 구조보다 Dataset이 매우 중요합니다.
 
 좋은 Dataset을 만들기 위해 다음을 확인하세요.
 

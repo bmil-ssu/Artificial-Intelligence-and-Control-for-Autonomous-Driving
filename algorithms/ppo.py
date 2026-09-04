@@ -46,7 +46,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from utils.networks import GaussianActorCritic
+from utils.networks import GaussianActorCritic, HybridActorCritic
 from utils.evaluator import evaluate_policy
 from utils.buffer import RolloutBuffer
 
@@ -74,13 +74,21 @@ class PPO:
         # ---- PPO 고유 ----
         clip_eps: float = 0.2,        # 클리핑 범위 ε
         value_coef: float = 0.5,      # 가치 손실 가중치 c_v
-        entropy_coef: float = 0.0,    # 엔트로피 보너스 c_e
+        entropy_coef: float = 0.0,    # 엔트로피 보너스 c_e (전체 행동)
+        lane_entropy_coef: float = 0.0,  # hybrid 전용: "차선 head만"의
+                                         # 엔트로피 보너스. 차선변경 확률이
+                                         # 초기에 0으로 붕괴하는 것을 늦춘다.
+                                         # (가감속 σ에는 영향 없음)
         max_grad_norm: float = 0.5,   # gradient clipping
         normalize_advantage: bool = True,
         # ---- 네트워크 ----
+        policy_type: str = "hybrid",  # "hybrid"(가감속 연속 + 차선 이산, 권장)
+                                      # | "gaussian"(모든 축 연속 — dead zone 있음)
+        lane_keep_bias: float = 1.0,  # hybrid 전용: 차선 "유지" 초기 편향
         hidden_sizes=(64, 64),
         activation: str = "tanh",
-        init_log_std: float = -0.5,   # 초기 탐험 폭 σ = exp(init_log_std)
+        init_log_std=-0.5,            # 초기 탐험 폭 σ = exp(·). 스칼라 또는
+                                      # 차원별 튜플 (utils/networks.py 참고)
         # ---- 기타 ----
         seed: int = 0,
         device: str = "auto",
@@ -94,13 +102,27 @@ class PPO:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(device)
 
-        # 네트워크는 utils/networks.py 에서 가져온다
-        self.policy = GaussianActorCritic(
-            obs_dim, act_dim,
-            hidden_sizes=hidden_sizes,
-            activation=activation,
-            init_log_std=init_log_std,
-        ).to(self.device)
+        # 네트워크는 utils/networks.py 에서 가져온다.
+        # hybrid: 가감속(Normal) + 차선변경(Categorical 3-way).
+        #   양자화 dead zone이 없어 deterministic 평가에서도 변경이 나온다.
+        # gaussian: 모든 축 연속 — 비교 실험용으로 남겨둠.
+        if policy_type == "hybrid":
+            assert act_dim == 2, "hybrid 정책은 [가감속, 차선] 2차원 행동 전용"
+            self.policy = HybridActorCritic(
+                obs_dim,
+                hidden_sizes=hidden_sizes,
+                activation=activation,
+                init_log_std=init_log_std,
+                lane_keep_bias=lane_keep_bias,
+            ).to(self.device)
+        else:
+            self.policy = GaussianActorCritic(
+                obs_dim, act_dim,
+                hidden_sizes=hidden_sizes,
+                activation=activation,
+                init_log_std=init_log_std,
+            ).to(self.device)
+        self.policy_type = policy_type
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr)
 
         self.n_steps = n_steps
@@ -111,6 +133,7 @@ class PPO:
         self.clip_eps = clip_eps
         self.value_coef = value_coef
         self.entropy_coef = entropy_coef
+        self.lane_entropy_coef = lane_entropy_coef
         self.max_grad_norm = max_grad_norm
         self.normalize_advantage = normalize_advantage
 
@@ -126,14 +149,18 @@ class PPO:
     # ==================================================================
     @torch.no_grad()
     def act(self, obs):
-        """학습용: 정책 분포에서 샘플 (σ가 탐험을 담당).
+        """학습용 확률적 행동. Returns (action, log_prob, value).
 
-        Returns: (action, log_prob, value)
-            log_prob과 value는 나중에 PPO 업데이트/GAE에 필요하므로 함께 반환.
+        hybrid: 가감속은 Normal 샘플, 차선은 Categorical 샘플(-1/0/+1).
+        gaussian: 기존과 동일한 전차원 Normal 샘플.
         """
         obs_t = torch.as_tensor(obs, dtype=torch.float32,
                                 device=self.device).unsqueeze(0)
-        mu, std, value = self.policy(obs_t)
+        if hasattr(self.policy, "sample"):          # hybrid 경로
+            action, log_prob, value = self.policy.sample(obs_t)
+            return (action.squeeze(0).cpu().numpy().astype(np.float32),
+                    float(log_prob.item()), float(value.item()))
+        mu, std, value = self.policy(obs_t)          # gaussian 경로
         dist = torch.distributions.Normal(mu, std)
         action = dist.sample()
         log_prob = dist.log_prob(action).sum(-1)
@@ -142,13 +169,19 @@ class PPO:
 
     @torch.no_grad()
     def predict(self, obs, deterministic: bool = True):
-        """평가/실행용: deterministic이면 분포의 평균 μ를 그대로 사용.
+        """평가/실행용. hybrid의 deterministic = (μ, argmax 차선).
 
         utils/evaluator.py 가 요구하는 인터페이스이기도 하다.
         """
         obs_t = torch.as_tensor(obs, dtype=torch.float32,
                                 device=self.device).unsqueeze(0)
-        mu, std, _ = self.policy(obs_t)
+        if hasattr(self.policy, "det_action"):       # hybrid 경로
+            if deterministic:
+                a = self.policy.det_action(obs_t)
+            else:
+                a, _, _ = self.policy.sample(obs_t)
+            return a.squeeze(0).cpu().numpy().astype(np.float32)
+        mu, std, _ = self.policy(obs_t)              # gaussian 경로
         if deterministic:
             return mu.squeeze(0).cpu().numpy().astype(np.float32)
         return (torch.normal(mu, std).squeeze(0)
@@ -158,7 +191,7 @@ class PPO:
     def get_value(self, obs) -> float:
         obs_t = torch.as_tensor(obs, dtype=torch.float32,
                                 device=self.device).unsqueeze(0)
-        _, _, value = self.policy(obs_t)
+        value = self.policy(obs_t)[-1]   # 마지막 원소 = V(s) (정책 종류 무관)
         return float(value.item())
 
     # ==================================================================
@@ -254,6 +287,11 @@ class PPO:
                 loss = (policy_loss
                         + self.value_coef * value_loss
                         + self.entropy_coef * entropy_loss)
+                # 차선 head 전용 엔트로피 보너스 (hybrid에서만 동작)
+                if self.lane_entropy_coef > 0 and \
+                        hasattr(self.policy, "lane_entropy"):
+                    loss = loss - (self.lane_entropy_coef
+                                   * self.policy.lane_entropy(obs_t[mb]).mean())
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -276,7 +314,15 @@ class PPO:
                 stats["clip_frac"] += clip_frac.item()
                 n_batches += 1
 
-        return {k: v / max(n_batches, 1) for k, v in stats.items()}
+        out = {k: v / max(n_batches, 1) for k, v in stats.items()}
+        # hybrid 진단: 업데이트 "후" 정책의 평균 차선변경(좌+우) 확률.
+        #   0으로 붕괴 → 차선유지 지역최적 경고 / 적당히 유지되며
+        #   eval의 차선변경 횟수가 오르면 제대로 배우는 중.
+        if hasattr(self.policy, "lane_change_prob"):
+            with torch.no_grad():
+                out["p_lane_change"] = float(
+                    self.policy.lane_change_prob(obs_t).mean().item())
+        return out
 
     # ==================================================================
     # 메인 학습 루프

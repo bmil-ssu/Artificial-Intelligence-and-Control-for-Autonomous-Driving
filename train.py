@@ -18,7 +18,8 @@ import shutil
 from datetime import datetime
 
 from env.road_config import ROAD, EGO, TRAFFIC
-from env.mdp_config import SIMULATION, OBSERVATION, ACTION, REWARD
+from env.mdp_config import SIMULATION, OBSERVATION, ACTION
+from env.mdp_config import REWARD as REWARD_DEFAULTS
 from env import road_builder
 from env.sumo_env import SumoHighwayEnv
 
@@ -34,6 +35,27 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 # ══════════════════════════════════════════════════════════════════
 TOTAL_TIMESTEPS = 200_000   # 총 학습 스텝 수
 
+# ══════════════════════════════════════════════════════════════════
+#  보상 튜닝 — env/mdp_config.py 의 기본값을 여기서 덮어쓴다.
+#  (여기 적은 키만 바뀌고, 나머지는 mdp_config 기본값 그대로)
+#  test.py 도 이 REWARD 를 import 하므로 학습/평가 조건이 항상 일치한다.
+#  이 파일이 run 폴더에 스냅샷되므로 "그 결과가 어떤 계수였는지"도 남는다.
+# ══════════════════════════════════════════════════════════════════
+REWARD_OVERRIDES = dict(
+    speed_weight=0.1,          # 속도 보상 (스텝당 최대 이 값)
+    collision_penalty=5.0,     # 충돌 시 -이 값, 즉시 종료
+    arrival_bonus=2.0,         # 완주 보너스
+    close_gap_threshold=6.0,   # 이 거리(m) 미만 접근 시
+    close_gap_penalty=0.1,     #   → 스텝당 감점
+    blocked_penalty=0.05,      # "느린 앞차에 막힘" 스텝당 감점 (추월 학습 핵심)
+    blocked_gap=20.0,          #   막힘 판정: 앞차 이 거리 이내
+    blocked_speed_frac=0.7,    #   그리고 내 속도 < vmax × 이 값
+    lane_change_penalty=0.0,   # 변경 실행당 감점 (커리큘럼: 초기 0,
+    invalid_action_penalty=0.0,#  추월 학습 후 지그재그 과하면 0.02~0.05)
+)
+REWARD = {**REWARD_DEFAULTS, **REWARD_OVERRIDES}
+
+
 HPARAMS = dict(
     # ---- 최적화 ----
     lr=1e-4,                 # 학습률. 보상이 요동치면 낮출 것 (3e-4 → 1e-4 → 5e-5)
@@ -48,7 +70,12 @@ HPARAMS = dict(
     # ---- PPO 고유 ----
     clip_eps=0.2,            # 클리핑 범위 ε
     value_coef=0.5,          # 가치 손실 가중치
-    entropy_coef=0.0,        # 엔트로피 보너스.
+    entropy_coef=0.0,
+    lane_entropy_coef=0.01,  # 차선 head "만"의 엔트로피 보너스 (hybrid 전용).
+                             #   차선변경 확률의 조기 붕괴(p_lane_change→0)를
+                             #   막아 추월 이득을 경험할 시간을 벌어준다.
+                             #   가감속 σ에는 영향 없음 (수렴 방해 안 함).
+                             #   추월을 배운 뒤에는 0.005나 0으로 낮춰도 됨.        # 엔트로피 보너스.
                              #   연속 제어에서는 0이 표준. 0.01처럼 크게 주면
                              #   σ가 안 줄어들어 정책이 계속 랜덤에 머문다.
     max_grad_norm=0.5,
@@ -57,9 +84,22 @@ HPARAMS = dict(
     # ---- 네트워크 (utils/networks.py) ----
     hidden_sizes=(256, 256),
     activation="relu",       # "tanh" | "relu" | "elu"
-    init_log_std=-0.5,       # 초기 탐험 폭 σ = exp(-0.5) ≈ 0.61
-                             #   행동 범위가 [-1,1]이라 σ=1.0은 거의 완전 랜덤.
-                             #   탐험이 부족하면 -0.2, 과하면 -1.0 정도로 조정.
+    policy_type="hybrid",      # "hybrid": 가감속 연속(Normal) + 차선 이산(Categorical)
+                               #   → 양자화 dead zone 제거. deterministic 평가에서도
+                               #     argmax로 차선변경이 실제로 나온다. (권장)
+                               # "gaussian": 예전 방식(전축 연속) — 비교 실험용
+    lane_keep_bias=0.5,        # hybrid 차선 head의 "유지" 초기 편향.
+                               #   0.5 → 초기 (좌27%/유지45%/우27%) ≈ 55% 변경 시도 (공격적)
+                               #   1.0 → ≈32% 시도 (보수적)
+                               #   낮추면 탐험↑, 높이면 보수적
+    init_log_std=-0.5,         # 가감속 축 초기 탐험 폭 σ=e^-0.5≈0.61
+                               # (hybrid에서 차선 탐험은 위 bias가 담당)  # 차원별 초기 탐험 폭: (가감속, 차선변경)
+                               #   가감속 σ = e^-0.5 ≈ 0.61
+                               #   차선변경 σ = e^0   = 1.0  ← 크게!
+                               # 차선변경은 |raw|>0.5를 넘어야 실행되므로
+                               # σ가 커야 초반에 변경을 자주 시도하고,
+                               # (안전게이트 덕에 죽지 않고) 추월의 이득을
+                               # 경험해 μ_lane이 임계 위로 학습될 수 있다.
 
     # ---- 기타 ----
     seed=0,
@@ -120,6 +160,7 @@ if __name__ == "__main__":
         road=ROAD, ego=EGO,
         mdp_sim=SIMULATION, mdp_obs=OBSERVATION,
         action=ACTION, reward=REWARD,
+        traffic=TRAFFIC,
         gui=False,   # 학습은 화면 없이 (수십 배 빠름)
     )
 
