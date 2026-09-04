@@ -1,15 +1,83 @@
 # 2. Road Environment Construction
 
 > **목표:** 직접 구축한 SUMO 도로 위에 일반 차량(HV)을 배치하고,  
-> 자율주행 차량(AV)이 주변 환경을 관측하고 행동할 수 있도록 **POMDP 구조를 설계**합니다.
+> 자율주행 차량(AV)이 주변 환경을 관측하고 행동할 수 있도록 **학습 가능한 주행 Environment** 구성
 
 ---
 
-# 1. 이번 단계에서 무엇을 하나요?
+# 1. 코드
 
-**차량이 움직일 수 있는 자율주행 환경**을 구성합니다.
+**도로를 만들고, 교통 흐름을 생성하고, AV가 학습할 수 있는 환경을 구성하는 코드**를 확인합니다.
 
-전체 흐름은 다음과 같습니다.
+```text
+Artificial-Intelligence-and-Control-for-Autonomous-Driving/
+│
+├── view_road.py
+└── env/
+    ├── road_config.py
+    ├── road_builder.py
+    ├── mdp_config.py
+    ├── sumo_env.py
+    └── sumo/
+        ├── *.net.xml
+        ├── *.rou.xml
+        └── *.sumocfg
+```
+
+| 파일 | 역할 | 주로 수정하는 내용 |
+|---|---|---|
+| `view_road.py` | 현재 설정된 도로와 교통 환경을 SUMO GUI에서 확인 | 일반적으로 직접 수정하지 않음 |
+| `env/road_config.py` | 도로 구조, 차량 종류, 교통량 등 **물리적인 도로 환경 설정** | 차선, 도로 길이, 제한속도, HV 구성, 교통량 |
+| `env/road_builder.py` | `road_config.py`를 읽어 SUMO 실행 파일을 **자동 생성** | 일반적으로 직접 수정하지 않음 |
+| `env/mdp_config.py` | AV의 **Observation, Action, Reward, Episode, GUI 설정** | 관측 범위, 행동 범위, Reward, Episode 길이 |
+| `env/sumo_env.py` | Python과 SUMO를 연결하는 **Gymnasium Environment** | Observation 생성, Action 적용, Reward 및 종료 조건 |
+| `env/sumo/` | `road_builder.py`가 자동 생성한 SUMO 파일 저장 | 직접 수정하지 않는 것을 권장 |
+
+## 1.1 코드가 연결되는 순서
+
+```text
+road_config.py
+     │  도로 / 차량 / 교통량 설정
+     ▼
+road_builder.py
+     │  SUMO 파일 자동 생성
+     ▼
+env/sumo/
+     │  Network / Route / SUMO Configuration
+     ▼
+sumo_env.py
+     │  TraCI를 이용하여 Python ↔ SUMO 연결
+     ▼
+Observation → Action → Reward
+```
+
+현재 도로가 의도한 대로 만들어졌는지 다음 명령으로 확인 가능함
+
+```bash
+python view_road.py
+```
+
+## 1.2 값 바꿀 때 확인할 파일
+
+| 바꾸고 싶은 것 | 확인할 파일 |
+|---|---|
+| 도로 길이 / 차선 수 / 제한속도 | `env/road_config.py` |
+| 일반 차량 수 / Traffic Flow | `env/road_config.py` |
+| HV Controller와 주행 특성 | `env/road_config.py` |
+| SUMO Network/Route 생성 방식 | `env/road_builder.py` |
+| 도로를 GUI로 확인 | `view_road.py` |
+| AV 관측 범위 | `env/mdp_config.py` |
+| Observation 구성 | `env/mdp_config.py`, `env/sumo_env.py` |
+| Action 범위 | `env/mdp_config.py`, `env/sumo_env.py` |
+| Reward 값 / Episode 길이 | `env/mdp_config.py` |
+| 실제 Reward 계산 / Done 판단 | `env/sumo_env.py` |
+| SUMO GUI 확대 / Delay | `env/mdp_config.py` |
+
+---
+
+# 2. 환경 구성
+
+**차량이 움직일 수 있는 자율주행 환경** 구성
 
 ```text
 SUMO 도로 구조 구축
@@ -18,7 +86,7 @@ Route / Traffic Flow 정의
         ↓
 일반 차량(HV) 추가
         ↓
-IDM 기반 차량 주행 확인
+교통 흐름 확인
         ↓
 자율주행 차량(AV) 추가
         ↓
@@ -27,666 +95,242 @@ Observation / Action / Reward 정의
 학습 가능한 Environment 완성
 ```
 
-> **"내가 만든 도로에서 일반 차량과 자율주행 차량이 정상적으로 움직일 수 있는 환경을 만드는 것"**
-
-이 목표입니다.
+> **핵심 목표:** 내가 만든 도로에서 HV와 AV가 정상적으로 움직이고, AV가 Observation을 받아 Action을 수행할 수 있는 환경을 만드는 것.
 
 ---
 
-# 2. SUMO 환경의 기본 구성
+# 3. `road_config.py` — 도로와 교통 환경 설정
 
-SUMO 환경을 구성할 때 자주 보게 되는 요소는 다음과 같습니다.
+`env/road_config.py`는 **어떤 도로에서 어떤 차량들이 주행할 것인지** 정의
+
+```text
+도로 구조 / 차선 수 / 도로 길이 / 제한속도
+일반 차량(HV)의 수와 Traffic Flow
+차량 Controller와 주행 특성
+```
+
+즉, 물리적인 도로나 주변 Traffic을 바꾸고 싶다면 가장 먼저 `road_config.py`를 확인하면 됨
+
+## 3.1 SUMO 도로의 기본 요소
 
 | 요소 | 의미 |
 |---|---|
 | **Edge** | 도로 구간 |
 | **Lane** | Edge 내부의 차선 |
-| **Junction** | 교차로 또는 도로 연결 지점 |
+| **Junction** | 도로 연결 지점 |
 | **Connection** | Lane과 Lane 사이의 연결 관계 |
-| **Route** | 차량이 이동할 도로 순서 |
-| **Vehicle Type (`vType`)** | 차량의 크기, 최대 속도, 가속도, 주행 모델 등의 설정 |
-| **Vehicle / Flow** | 실제로 시뮬레이션에 생성되는 차량 또는 차량 흐름 |
+| **Route** | 차량이 이동하는 도로 순서 |
+| **Vehicle Type (`vType`)** | 차량 크기, 최대 속도, 가속도, 주행 모델 등의 설정 |
+| **Vehicle / Flow** | 실제 시뮬레이션에 생성되는 차량 또는 차량 흐름 |
 
-일반적으로 프로젝트 폴더에서는 다음과 같은 파일들을 사용하게 됩니다.
+도로를 설계할 때는 **차로 수, 진행 방향, Junction, 진입/진출 방향, Lane Connection, 합류/분기 구조**를 우선 확인
+
+## 3.2 도로를 수정할 때 작업 흐름
 
 ```text
-sumo_rl/
-│
-├─ env/                     ← 환경(문제 정의) 관련 전부
-│  ├─ road_config.py        도로/차량/교통류 설정 (파이썬 dict)
-│  ├─ mdp_config.py         MDP 정의: 관측·행동·보상·에피소드 길이
-│  ├─ road_builder.py       road_config → SUMO 파일 자동 생성 (netconvert)
-│  ├─ sumo_env.py           Gymnasium 환경 (TraCI로 SUMO 조종)
-│  └─ sumo/                 자동 생성되는 SUMO 파일 (직접 수정하지 말 것)
-│
-└─ utils/                   ← 알고리즘/환경에 독립적인 재사용 부품
-   └─ networks.py           build_mlp, GaussianActorCritic, CategoricalActorCritic
+road_config.py 수정
+        ↓
+road_builder.py가 SUMO 파일 생성
+        ↓
+python view_road.py
+        ↓
+SUMO GUI에서 확인
 ```
 
----
-
-# 3. 도로 구조 구축
-
-프로젝트에서는 **대한민국에 실제로 존재하는 도로 구조**를 참고하여 SUMO 도로를 만듭니다.
-
-예를 들어,
-
-- 삼거리
-- 사거리
-- 오거리
-- 회전교차로
-- 합류 구간
-- 분기 구간
-- 차로 감소 구간
-- 복합 교차로
-
-등을 구현할 수 있습니다.
-
-실제 도로를 완벽하게 1:1로 복사할 필요는 없습니다.
-
-다만 다음과 같은 핵심 구조는 최대한 반영하는 것을 권장합니다.
-
-- 차로 수
-- 도로의 진행 방향
-- Junction 위치
-- 차량 진입 / 진출 방향
-- 좌회전 / 우회전 가능 여부
-- 차선 간 Connection
-- 합류 또는 분기 구조
+`env/sumo/` 내부의 XML 파일은 자동으로 다시 생성될 수 있으므로, 직접 수정하기보다 `road_config.py`를 수정하는 것을 권장
 
 ---
 
-## 3.1 처음에는 도로만 확인하세요
+# 4. `road_builder.py` — SUMO 파일 자동 생성
 
-처음부터 차량이나 강화학습 코드를 추가하지 마세요.
+`env/road_builder.py`는 `road_config.py`의 Python 설정을 SUMO가 읽을 수 있는 Network, Route, Vehicle Type, Traffic Flow, SUMO Configuration 파일로 변환
 
-먼저 `sumo-gui`에서 도로만 실행하고 아래 항목을 확인합니다.
+```text
+road_config.py
+       ↓
+road_builder.py
+       ↓
+SUMO XML / Configuration files
+```
+
+일반적인 실습에서는 `road_builder.py` 자체보다 `road_config.py`의 설정값 수정
+
+> **주의:** `env/sumo/`에 직접 수정한 내용은 다음 생성 시 덮어쓰여질 수 있습니다.
+
+---
+
+# 5. `view_road.py` — 학습 전에 환경 확인
+
+도로와 Traffic Flow를 만든 다음 환경부터 확인
+
+```bash
+python view_road.py
+```
+
+SUMO GUI가 열리면 **▶ Play** 버튼을 눌러 차량 움직임 확인
 
 ### Road Checklist
 
-- [ ] 모든 Edge가 정상적으로 연결되어 있는가?
-- [ ] Lane의 개수가 의도한 것과 같은가?
-- [ ] Junction이 정상적으로 연결되어 있는가?
-- [ ] 좌회전 / 직진 / 우회전 Connection이 올바른가?
-- [ ] 차량이 진입할 수 없는 끊어진 Lane이 없는가?
-- [ ] 도로 방향이 반대로 설정된 곳은 없는가?
+- [ ] Edge와 Lane이 정상적으로 연결되어 있는가?
+- [ ] 차선 수와 진행 방향이 의도한 것과 같은가?
+- [ ] 합류 / 분기 Connection이 정상적인가?
+- [ ] 차량이 이동할 수 없는 끊어진 구간이 없는가?
 
-> **도로 자체에 문제가 있으면 이후의 모델 학습으로 해결할 수 없습니다.**
+### Traffic Checklist
 
-따라서 환경 구축 단계에서 충분히 확인해야 합니다.
+- [ ] 차량이 정상적으로 생성되는가?
+- [ ] 차량이 Route를 따라 끝까지 이동하는가?
+- [ ] 특정 구간에서 비정상적으로 멈추지 않는가?
+- [ ] Teleport나 비정상적인 충돌이 반복되지 않는가?
+- [ ] 교통량이 지나치게 많거나 적지 않은가?
 
----
+> **도로 자체에 문제가 있으면 강화학습으로 해결 불가함**
 
-# 4. Route와 Traffic Flow 만들기
+## 5.1 GUI 확대 정도 조절
 
-도로가 완성되었다면 차량이 **어디에서 출발하고 어디로 이동할지** 정의해야 합니다.
+GUI 관련 설정은 `env/mdp_config.py`에서 확인
 
-예를 들어 다음과 같은 Route를 생각할 수 있습니다.
-
-```text
-북쪽 진입 → 교차로 → 남쪽 진출
-서쪽 진입 → 교차로 → 동쪽 진출
-남쪽 진입 → 교차로 → 서쪽 진출
+```python
+SIMULATION = {
+    ...
+    "gui_zoom": 4000.0,
+    "gui_view_width": 500.0,
+    "gui_track_ego": True,
+}
 ```
 
-<!--SUMO에서는 `.rou.xml` 파일에서 차량의 Route와 Vehicle Type을 정의할 수 있습니다.
+처음 GUI가 열렸을 때 도로를 **더 확대**해서 보고 싶다면 `gui_view_width`를 줄임
 
-아래는 개념을 이해하기 위한 간단한 예시입니다.
-
-```xml
-<routes>
-
-    <vType
-        id="human"
-        vClass="passenger"
-        carFollowModel="IDM"
-        accel="2.6"
-        decel="4.5"
-        tau="1.2"
-        minGap="2.5"
-        maxSpeed="13.89"
-    />
-
-    <route
-        id="route_0"
-        edges="edge_0 edge_1 edge_2"
-    />
-
-    <flow
-        id="human_flow_0"
-        type="human"
-        route="route_0"
-        begin="0"
-        end="3600"
-        vehsPerHour="600"
-    />
-
-</routes>
+```python
+"gui_view_width": 300.0,
 ```
 
-위 예시는 다음을 의미합니다.
+주행 중 Ego 차량 주변을 더 확대하려면 `gui_zoom`을 높임
 
-```text
-human이라는 일반 차량 타입을 만들고
-        ↓
-IDM을 이용하여 앞 차량을 따라가도록 하고
-        ↓
-route_0 경로를 따라
-        ↓
-일정한 교통량으로 차량을 생성
-```
-
-> 위의 수치는 **예시**입니다.  
-> 실제 프로젝트에서는 자신이 만든 도로의 길이, 제한속도, 교통량에 맞게 조절해야 합니다. -->
-
----
-
-# 5. 일반 차량(HV)을 먼저 만들어야 하는 이유
-
-도로가 제대로 만들어졌는지 확인하기 위해 HV를 먼저 도로에 배치합니다.
-
-자율주행 차량 한 대만 도로 위에 놓으면 대부분의 의사결정 문제가 너무 단순해집니다.
-
-예를 들어 주변에 다른 차량이 없다면,
-
-```text
-앞 차량과 거리 조절
-합류
-양보
-차선 변경
-교차로 통과
-충돌 회피
-```
-
-와 같은 행동이 거의 필요하지 않습니다.
-
-따라서 프로젝트에서는 일반 차량들이 만들어내는 교통 흐름 속에서 AV가 적절한 행동을 선택하도록 만드는 것이 목표입니다.
-
----
-
-# 5.5 이 프로젝트의 배경차 구성: 컨트롤러 4종 믹스
-
-실제 도로에는 운전 스타일이 제각각인 차들이 섞여 있습니다.
-그래서 이 프로젝트의 배경차는 **단일 모델이 아니라 서로 다른
-Car-Following Model 4종을 확률적으로 섞어** 투입합니다
-(SUMO의 `vTypeDistribution` 기능, `env/road_builder.py`가 자동 생성).
-
-| 컨트롤러 | 기본 비율 | GUI 색 | 성격 |
-|---|---|---|---|
-| Krauss | 35% | 노랑 | SUMO 기본. `sigma`로 무작위 감속이 섞인 산만한 인간 운전자 |
-| IDM | 30% | 시안 | 부드럽고 예측 가능. 아래 6장에서 자세히 다루는 표준 모델 |
-| EIDM | 20% | 주황 | IDM + 반응지연·부주의 → 더 현실적인 인간 거동 |
-| ACC | 15% | 마젠타 | 일정 차간시간을 기계적으로 유지 (크루즈/자율주행 차량 느낌) |
-
-비율과 파라미터는 `env/road_config.py`의 `TRAFFIC["controllers"]`에서
-수정하며, 항목을 추가/삭제하면 그대로 반영됩니다 (비율 합 자동 정규화).
-
-> **왜 섞을까?** 배경차가 한 가지 모델뿐이면 RL 에이전트가 그 모델의
-> 버릇(예: Krauss의 들쑥날쑥한 감속 패턴)에 과적합됩니다. 여러 스타일을
-> 섞으면 "상대가 어떻게 나올지 모르는" 상황에서도 통하는, 더 강건한
-> 주행 정책이 학습됩니다. `view_road.py`를 실행해 색색의 차들이 서로
-> 다르게 움직이는 것을 직접 관찰해 보세요.
-
-# 6. IDM이란?
-
-## Intelligent Driver Model (IDM)
-
-**IDM(Intelligent Driver Model)** 은 앞 차량과의 거리와 상대 속도를 이용하여 차량의 가속 / 감속을 결정하는 대표적인 **Car-Following Model**입니다.
-
-쉽게 말하면,
-
-> **"앞 차량과 너무 가까우면 감속하고, 충분히 멀면 원하는 속도까지 가속하는 일반 운전자 모델"**
-
-이라고 생각하면 됩니다.
-
----
-
-## 6.1 IDM이 보는 정보
-
-IDM 차량은 대표적으로 다음 정보를 이용합니다.
-
-```text
-현재 차량 속도
-+
-앞 차량과의 거리
-+
-앞 차량과의 상대 속도
-+
-원하는 주행 속도
-+
-원하는 안전거리
-```
-
-### Case 1. 앞 차량이 멀리 있음
-
-```text
-🚗 Ego                       🚙 Leader
-────────────── 큰 거리 ──────────────
-
-→ 가속
-```
-
-### Case 2. 앞 차량과 가까워짐
-
-```text
-🚗 Ego       🚙 Leader
-──── 짧은 거리 ────
-
-→ 감속
-```
-
-### Case 3. 앞 차량이 느려짐
-
-```text
-🚗 Ego  →→→     🚙 Leader →
-
-→ 상대 속도 차이가 커짐
-→ 더 강하게 감속
+```python
+"gui_zoom": 5000.0,
 ```
 
 ---
 
-<!-- # 7. IDM의 기본 아이디어
+# 6. 일반 차량(HV)과 Traffic 구성
 
-IDM의 대표적인 가속도 모델은 다음과 같이 표현할 수 있습니다.
+자율주행 차량 한 대만 존재하면 앞차와 거리 조절, 합류, 양보, 차선 변경, 충돌 회피와 같은 의사결정 문제가 충분히 발생하지 않게 됨
 
-$$
-\dot{v}
-=
-a
-\left[
-1-
-\left(\frac{v}{v_0}\right)^\delta
--
-\left(\frac{s^*(v,\Delta v)}{s}\right)^2
-\right]
-$$
+따라서 주변 일반 차량(HV)이 **학습에 필요한 Traffic Environment**를 만듦
 
-여기서 원하는 안전거리는 다음과 같이 표현할 수 있습니다.
+하나의 Car-Following Model만 사용하는 대신 여러 Controller를 혼합할 수 있음. 실제 비율과 파라미터는 `env/road_config.py`의 Traffic/Controller 관련 설정 확인
 
-$$
-s^*(v,\Delta v)
-=
-s_0
-+
-\max
-\left(
-0,
-vT
-+
-\frac{v\Delta v}{2\sqrt{ab}}
-\right)
-$$
-
-각 변수는 대략 다음 의미입니다.
-
-| 기호 | 의미 |
+| Controller | 특징 |
 |---|---|
-| $v$ | 현재 차량 속도 |
-| $v_0$ | 원하는 주행 속도 |
-| $s$ | 앞 차량과의 현재 거리 |
-| $s_0$ | 최소 안전거리 |
-| $T$ | 원하는 Time Headway |
-| $\Delta v$ | 앞 차량과의 상대 속도 |
-| $a$ | 최대 가속 성향 |
-| $b$ | 편안한 감속 성향 |
-| $\delta$ | 가속 특성을 결정하는 계수 |
+| **Krauss** | SUMO의 대표적인 기본 차량 추종 모델 |
+| **IDM** | 거리와 상대 속도를 이용한 부드러운 차량 추종 |
+| **EIDM** | IDM을 확장한 차량 추종 모델 |
+| **ACC** | 일정한 차간시간을 유지하는 차량 제어 모델 |
 
-이 수식을 직접 구현하거나 외울 필요는 없습니다.
--->
+```text
+road_config.py
+       ↓
+HV 종류 + 비율 + 주행 특성
+       ↓
+road_builder.py
+       ↓
+SUMO Vehicle Type / Flow
+```
 
-SUMO에는 IDM이 이미 구현되어 있기 때문에 프로젝트에서는
+## 6.1 IDM이란?
+
+**IDM(Intelligent Driver Model)** 은 앞 차량과의 거리와 상대 속도를 이용하여 가속/감속을 결정하는 대표적인 **Car-Following Model**
+
+> 앞 차량이 가까우면 감속하고, 충분히 멀면 원하는 속도까지 가속하는 모델
+
+SUMO에는 IDM이 구현되어 있으므로 직접 수식을 구현할 필요 없음
 
 ```xml
 carFollowModel="IDM"
 ```
 
-과 같이 Vehicle Type을 설정하여 사용할 수 있습니다.
-
----
-
-# 7. IDM에서 자주 조절하는 값
-
-SUMO에서 일반 차량의 성향을 바꾸고 싶다면 다음과 같은 값을 조절할 수 있습니다.
+### 자주 조절하는 차량 파라미터
 
 | Parameter | 의미 | 값이 커지면 |
 |---|---|---|
-| `accel` | 최대 가속 능력 | 더 빠르게 가속 |
+| `accel` | 최대 가속 능력 | 더 빠르게 가속 가능 |
 | `decel` | 감속 능력 | 더 강한 감속 가능 |
-| `tau` | 원하는 시간 간격(Time Headway) | 앞 차량과 더 긴 간격 유지 |
-| `minGap` | 최소 차량 간격 | 차량 사이 공간 증가 |
-| `maxSpeed` | 차량의 최대 속도 | 더 높은 속도로 주행 가능 |
+| `tau` | 원하는 Time Headway | 앞 차량과 더 긴 간격 유지 |
+| `minGap` | 최소 차량 간격 | 최소 공간 증가 |
+| `maxSpeed` | 최대 속도 | 더 높은 속도로 주행 가능 |
 
-예:
+### IDM과 차선 변경은 다름!
 
-```xml
-<vType
-    id="human_cautious"
-    carFollowModel="IDM"
-    accel="1.8"
-    decel="4.0"
-    tau="1.5"
-    minGap="3.0"
-    maxSpeed="13.89"
-/>
-```
-
-이처럼 차량마다 다른 설정을 주면 조금 더 다양한 교통 흐름을 만들 수 있습니다.
-
----
-
-# 중요: IDM은 차선 변경 모델이 아닙니다
-
-여기서 한 가지 중요한 점이 있습니다.
-
-> **IDM은 기본적으로 차량의 종방향(Longitudinal) 움직임을 결정하는 Car-Following Model입니다.**
-
-즉,
-
-```text
-가속
-감속
-앞 차량과의 거리 유지
-```
-
-를 담당합니다.
-
-반면,
-
-```text
-왼쪽 차선으로 이동
-오른쪽 차선으로 이동
-추월
-합류
-```
-
-와 같은 **횡방향(Lateral) 의사결정**은 Lane-Changing Model이 담당합니다.
-
-SUMO에서는 예를 들어 `LC2013`과 같은 Lane-Changing Model을 사용할 수 있습니다.
+IDM은 종방향(Longitudinal) 가속/감속을 담당, 차선 변경은 SUMO의 Lane-Changing Model 또는 AV Policy가 담당
 
 ```text
 일반 차량(HV)
 │
-├── Car-Following Model
-│       └── IDM
-│           └── 가속 / 감속
+├── Longitudinal Control
+│       └── IDM / Krauss / EIDM / ACC
 │
-└── Lane-Changing Model
-        └── LC2013 등
-            └── 차선 변경
+└── Lateral Control
+        └── SUMO Lane-Changing Model
 ```
 
 ---
 
-# 8. 일반 차량 환경 확인
+# 7. `mdp_config.py` — AV의 문제 정의
 
-일반 차량을 추가한 후에는 교통 흐름부터 확인해야 합니다.
-
-- [ ] 차량이 정상적으로 생성되는가?
-- [ ] 차량이 Route를 끝까지 따라가는가?
-- [ ] 특정 Junction에서 차량이 비정상적으로 멈추지 않는가?
-- [ ] 차량이 계속 Teleport되지 않는가?
-- [ ] 비정상적인 충돌이 반복되지 않는가?
-- [ ] 교차로에서 Traffic Flow가 자연스러운가?
-- [ ] 차량 수가 너무 적거나 지나치게 많지 않은가?
-
-좋은 환경은
+도로와 HV가 준비되었다면 이제 AV에게 **무엇을 보여주고, 어떤 행동을 하게 하며, 어떻게 평가할지** 정의
 
 ```text
-도로 구조
-+
-Route
-+
-일반 차량
+Observation
+Action
+Reward
+Simulation / Episode length
+GUI setting
 ```
 
-만 실행해도 충분히 자연스러운 Traffic Flow가 만들어져야 합니다.
-
----
-
-# 9. 이제 학습된 자율주행 차량(AV)을 추가합니다
-
-일반 차량 환경이 정상적으로 동작하면 자율주행 차량을 한 대 배치합니다.
+## 7.1 `road_config.py`와 `mdp_config.py`의 차이
 
 ```text
-                    ┌────────────────────┐
-                    │        SUMO        │
-                    │                    │
-                    │  HV   HV   AV   HV │
-                    └─────────┬──────────┘
-                              │
-                       Observation
-                              │
-                              ▼
-                    ┌────────────────────┐
-                    │   AV Controller    │
-                    │   BC / RL Model    │
-                    └─────────┬──────────┘
-                              │
-                            Action
-                              │
-                              ▼
-                           SUMO
-```
+road_config.py
+→ 어떤 도로와 Traffic Environment인가?
 
-일반 차량은 SUMO의 IDM과 같은 주행 모델이 제어하고, 자율주행 차량은 Python에서 작성한 **Controller / Policy** 가 제어합니다.
-
-Python과 SUMO 사이의 정보 교환에는 주로 **TraCI** 를 사용합니다.
-
----
-
-# 10. POMDP란?
-
-자율주행 차량의 의사결정 문제는 **POMDP(Partially Observable Markov Decision Process)** 로 생각할 수 있습니다.
-
-왜 **Partially Observable**일까요?
-
-실제 자율주행 차량은 도로 위의 모든 정보를 완벽하게 알 수 없기 때문입니다.
-
-예를 들어 AV가 전체 도로의 모든 차량을 알고 있다고 가정하기보다,
-
-```text
-AV 주변 일정 거리
-또는
-가장 가까운 앞/뒤 차량
-```
-
-정도만 관측하도록 만들 수 있습니다.
-
----
-
-# 11. State와 Observation의 차이
-
-처음 강화학습을 접하면 **State와 Observation**을 혼동하기 쉽습니다.
-
-## State
-
-State는 시뮬레이터 내부의 **전체 환경 상태**라고 생각할 수 있습니다.
-
-예를 들어 SUMO는 실제로 다음 정보를 모두 알고 있습니다.
-
-```text
-모든 차량의 위치
-모든 차량의 속도
-모든 차량의 차선
-모든 차량의 Route
-Traffic Light 상태
-도로 전체의 교통 상황
-...
-```
-
-이를 전체 State $s_t$라고 생각할 수 있습니다.
-
-## Observation
-
-하지만 자율주행 차량에게 모든 정보를 줄 필요는 없습니다.
-
-AV가 실제로 입력으로 사용하는 정보만을
-
-> **Observation $o_t$**
-
-이라고 합니다.
-
-```text
-전체 SUMO State
-─────────────────────────────────────
-Vehicle 1
-Vehicle 2
-Vehicle 3
-Vehicle 4
-...
-─────────────────────────────────────
-             │
-             │ AV 주변 정보만 선택
-             ▼
-        Observation
-────────────────────
-Ego speed
-Ego lane
-Front distance
-Front relative speed
-Rear distance
-Rear relative speed
-...
-────────────────────
-```
-
-즉,
-
-> **SUMO의 전체 상태 중 AV가 실제로 사용할 정보만 선택하여 Observation을 구성**
-
-하게 됩니다.
-
----
-
-# 12. POMDP의 기본 구조
-
-한 시점 $t$에서 다음과 같이 생각하면 됩니다.
-
-```text
-현재 Observation
-       o_t
-        │
-        ▼
-┌─────────────────┐
-│      Policy     │
-└────────┬────────┘
-         │
-       Action
-        a_t
-         │
-         ▼
-┌─────────────────┐
-│      SUMO       │
-└────────┬────────┘
-         │
-         ▼
-Next Observation + Reward
-      o_(t+1), r_t
-```
-
-학습에서는 이 과정이 반복됩니다.
-
-```text
-o_t
- ↓
-a_t
- ↓
-SUMO simulation step
- ↓
-r_t
- ↓
-o_(t+1)
- ↓
-...
+mdp_config.py
+→ 그 환경에서 AV가 어떤 문제를 풀 것인가?
 ```
 
 ---
 
-# 13. Observation 설계
+# 8. Observation — AV가 무엇을 보는가?
 
-프로젝트에서 가장 먼저 결정해야 하는 것은
-
-> **"우리 AV에게 어떤 정보를 보여줄 것인가?"**
-
-입니다.
-
-## 13.1 Ego Vehicle 정보
-
-예:
+SUMO는 모든 차량의 상태를 알고 있지만, AV Policy에는 필요한 정보만 전달하며, 이 입력을 **Observation**이라고 함
 
 ```text
-내 현재 위치
-내 현재 속도
+SUMO 전체 상태
+      ↓
+AV 주변의 필요한 정보만 선택
+      ↓
+Observation
 ```
-
-## 13.2 주변 차량 정보
-
-예:
 
 ```text
-내 주변 차량과 나 사이의 상대 속도
-내 주변 차량과 나 사이의 상대 위치
+Ego speed / position / lane
+주변 차량과의 상대 위치
+주변 차량과의 상대 속도
 ```
 
-## 13.3 도로 환경 정보
-
-예:
+### Observation 관련 코드
 
 ```text
-내 앞 도로의 차량 밀도
-도로가 끊겨 있는지, 연결되어 있는지
+mdp_config.py
+→ 관측 범위와 Observation 관련 설정
+
+sumo_env.py
+→ TraCI에서 값을 읽고 실제 Observation Vector 생성
 ```
 
-## 13.4 예시 Observation Vector
+Observation의 dimension은 모든 timestep에서 동일해야 함. 주변 차량이 없을 때는 padding, default value, mask 등을 사용해 입력 크기 고정
 
-예를 들어 다음과 같은 Observation을 만들 수 있습니다.
-
-$$
-o_t =
-[
-v_{\mathrm{ego}},
-p_{\mathrm{ego}},
-\Delta v,
-\Delta p,
-density,
-lane,
-]
-$$
-
----
-
-# 14. 주변 차량이 없으면 어떻게 하나요?
-
-예를 들어 관측 범위 안에 앞 차량이 없을 수 있습니다.
-
-그런 경우 Observation의 길이가 계속 바뀌면 Neural Network에 입력하기 어렵습니다.
-
-따라서 Observation의 크기를 **항상 동일하게 유지**해야 합니다.
-
-중요한 것은
-
-> **모든 timestep에서 Observation의 차원이 동일해야 한다는 것**
-
-입니다.
-
----
-
-# 15. Observation Normalization
-
-Neural Network 학습에서는 입력 값의 크기가 지나치게 다르면 학습이 어려워질 수 있습니다.
-
-예를 들어,
-
-```text
-Speed        = 13.2
-Distance     = 87.5
-Lane index   = 2
-```
-
-와 같이 값의 범위가 서로 다를 수 있습니다.
-
-따라서 다음과 같이 정규화할 수 있습니다.
+필요한 경우 속도와 거리처럼 범위가 다른 입력 정규화
 
 ```python
 normalized_speed = speed / max_speed
@@ -695,178 +339,157 @@ normalized_distance = distance / observation_range
 
 ---
 
-# 16. Action 설계
+# 9. Action — AV가 무엇을 결정하는가?
 
-다음으로 결정해야 하는 것은
+AV Policy는 예를 들어 **가속도 + 차선 변경**의 Hybrid Action을 출력할 수 있음
 
-> **"AV가 어떤 행동을 직접 결정하게 할 것인가?"**
-
-입니다.
-
-## Hybrid Action
-
-가속도와 차선 변경을 동시에 결정할 수도 있습니다.
-
-$$
-a_t =
-[
-a_t^{acc},
-a_t^{lc}
-]
-$$
+\[
+a_t = [a_t^{acc}, a_t^{lc}]
+\]
 
 ```text
 Acceleration
-a_acc ∈ [-1.0, 1.0]
-
-Lane Change
-a_lc ∈ {-1, 0, +1}
-
--1 = Left
- 0 = Keep
-+1 = Right
++
+Lane Change {-1, 0, +1}
 ```
+
+Action의 범위는 `mdp_config.py`에서 확인하고, 실제 SUMO 차량에 적용하는 로직은 `sumo_env.py`에서 확인
+
 ---
 
-# 17. TraCI를 이용한 AV 제어
+# 10. Reward와 Episode 종료
 
-Python에서는 TraCI를 통해 SUMO 차량의 상태를 읽거나 차량을 제어할 수 있습니다.
+Reward는 AV가 수행한 행동을 평가하는 값
 
-차량 속도 확인:
+```text
+빠른 진행 / 목적지 도착      → Positive Reward
+앞차에 과도하게 접근         → Penalty
+충돌                         → Large Negative Reward
+```
+
+Reward 관련 **설정값**은 `mdp_config.py`, 실제 **계산 로직**은 `sumo_env.py`에서 확인
+
+Episode는 일반적으로 다음 상황에서 종료하게 됨
+
+```text
+Collision
+Goal Reached
+Maximum Episode Step
+```
+
+Gymnasium에서는 보통 환경 자체 종료(`terminated`)와 시간 제한 종료(`truncated`)를 구분
+
+---
+
+# 11. `sumo_env.py` — 실제 강화학습 Environment
+
+`env/sumo_env.py`는 Python과 SUMO를 연결하는 핵심 코드
+
+```text
+SUMO 실행 / TraCI 연결
+AV 상태 읽기
+Observation 생성
+Action 적용
+simulationStep 수행
+Reward 계산
+Done 판단
+```
+
+## 11.1 `reset()`
+
+새 Episode를 시작하고 초기 Observation을 반환
+
+```text
+새 SUMO Simulation 시작
+        ↓
+차량 초기화 / Warm-up
+        ↓
+초기 Observation 생성
+```
+
+강화학습 코드에서는 보통 다음과 같이 사용
+
+```python
+obs, info = env.reset()
+```
+
+## 11.2 `step(action)`
+
+Policy가 결정한 Action을 Environment에 전달
+
+```python
+next_obs, reward, terminated, truncated, info = env.step(action)
+```
+
+하나의 step에서는 대략 다음 과정이 수행됨
+
+```text
+1. Action 입력
+       ↓
+2. AV에 Action 적용
+       ↓
+3. SUMO simulationStep()
+       ↓
+4. 충돌 / 도착 여부 확인
+       ↓
+5. Reward 계산
+       ↓
+6. Next Observation 생성
+       ↓
+7. 결과 반환
+```
+
+---
+
+# 12. TraCI — Python에서 SUMO 제어
+
+TraCI는 Python에서 SUMO 차량 상태를 읽고 차량을 제어하는 인터페이스
+
+실제 프로젝트에서는 이러한 명령이 `sumo_env.py` 내부에서 사용
+
+### 차량 속도
 
 ```python
 ego_speed = traci.vehicle.getSpeed(av_id)
 ```
 
-차선 확인:
+### 차선 확인
 
 ```python
 lane_id = traci.vehicle.getLaneID(av_id)
 ```
 
-앞 차량 탐색:
+### 앞 차량 탐색
 
 ```python
 leader = traci.vehicle.getLeader(av_id, dist=30.0)
 ```
 
-AV의 가속도 적용:
+### 가속도 적용
 
 ```python
-traci.vehicle.setAcceleration(
-    av_id,
-    acceleration,
-    duration=1.0,
-)
+traci.vehicle.setAcceleration(av_id, acceleration, duration=1.0)
 ```
 
-차선 변경:
+### 차선 변경
 
 ```python
-traci.vehicle.changeLane(
-    av_id,
-    target_lane,
-    duration=1.0,
-)
+traci.vehicle.changeLane(av_id, target_lane, duration=1.0)
 ```
 
-## :warning: TraCI 제어 시 주의
-
-TraCI로 속도나 가속도를 명령하더라도 SUMO의 기본 설정에서는 **안전 속도, 최대 가속/감속, 교차로 통행 규칙 등의 제약이 함께 적용될 수 있습니다.**
-
-따라서
-
-```text
-Policy가 선택한 Action
-```
-
-과
-
-```text
-SUMO에서 실제로 적용된 Action
-```
-
-이 항상 완전히 같다고 가정하면 안 됩니다.
-
-처음 프로젝트를 구현할 때는 SUMO의 안전 제약을 유지하는 것을 권장합니다.
-
-`speedMode`, `laneChangeMode` 등을 변경할 수도 있지만, 해당 설정의 의미를 이해하지 않은 상태에서 모든 안전 기능을 끄는 것은 권장하지 않습니다.
+> **주의:** Policy가 선택한 Action과 SUMO에서 실제 적용된 차량 움직임이 완전히 같지 않을 수 있음, `speedMode`, `laneChangeMode`, Car-Following safety, 최대 가감속 등의 SUMO 제약이 함께 작동할 수 있음
 
 ---
 
-# 18. Reward란?
+# 13. 하나의 Environment Step 전체 흐름
 
-Reward는 자율주행 차량에게
-
-> **"방금 한 행동이 얼마나 좋은 행동이었는가?"**
-
-를 숫자로 알려주는 값입니다.
-
-예를 들어,
 
 ```text
-목적지에 도착       → Positive Reward
-적절한 속도로 주행 → Positive Reward
-앞으로 진행         → Positive Reward
-
-충돌                → Large Negative Reward
-도로에서 벗어남     → Negative Reward
-지나치게 정지       → Negative Reward
-```
-
-처럼 설계할 수 있습니다.
-
----
-
-## 보상 정의
-
-```
-매 스텝:  + speed_weight(0.1) × (내 속도 / vmax)          ← 빠를수록 보상
-          - close_gap_penalty(0.2)  (앞차 10m 미만 접근 시) ← 위험운전 감점
-종료 시:  충돌 -5 / 완주 +2 / 시간초과(400스텝) 추가보상 없음
-```
-
-이상적 에피소드 리턴 ≈ +10, 초반 충돌 시 마이너스권.
-값과 설계 이유(스케일을 왜 줄였는지)는 env/mdp_config.py의 REWARD 주석을 참고하세요.
-
----
-
-# 19. Terminal Condition / Done
-
-Episode가 언제 종료되는지도 정의해야 합니다.
-
-예를 들어 다음과 같은 조건을 사용할 수 있습니다.
-
-```text
-Collision
-→ Episode 종료
-
-Maximum Simulation Step 도달
-→ Episode 종료
-```
-
-Python에서는 개념적으로 다음과 같습니다.
-
-```python
-done = (
-    collision
-    or reached_goal
-    or step >= max_episode_steps
-)
-```
-
----
-
-# 20. 하나의 Environment Step 정리
-
-지금까지의 내용을 하나의 timestep으로 정리하면 다음과 같습니다.
-
-```text
-1. SUMO에서 현재 차량 정보 읽기
+1. SUMO에서 현재 차량 상태 읽기
             ↓
-2. Observation o_t 구성
+2. Observation o_t 생성
             ↓
-3. Controller / Policy가 Action a_t 결정
+3. Policy가 Action a_t 결정
             ↓
 4. Action을 SUMO에 적용
             ↓
@@ -879,36 +502,33 @@ done = (
 8. Next Observation o_(t+1) 생성
 ```
 
-이를 반복하면 자율주행 학습 환경이 됩니다.
+이를 반복하면 강화학습 가능한 Environment가 됨
 
 ---
 
-# 21. HV와 AV의 차이 정리
+# 14. HV와 AV의 차이
 
 | | 일반 차량 (HV) | 자율주행 차량 (AV) |
 |---|---|---|
-| Controller | SUMO 기본 모델 | 학습 모델 / Python Controller |
-| 종방향 제어 | IDM 등 | Policy Action |
-| 차선 변경 | SUMO Lane-Changing Model | SUMO 또는 Policy |
+| Controller | SUMO 차량 모델 | Python Policy |
+| 종방향 제어 | IDM / Krauss / EIDM / ACC 등 | Policy Action |
+| 차선 변경 | SUMO Lane-Changing Model | Policy 또는 SUMO 설정 |
 | 주변 정보 | SUMO 내부적으로 사용 | 직접 Observation 구성 |
 | 학습 대상 | X | O |
 | 역할 | Traffic 생성 | 의사결정 학습 |
 
-즉,
-
 ```text
-HV = 주변 교통 환경을 만드는 차량
-
-AV = 우리가 학습시키려는 차량
+HV = 주변 교통 상황을 만들어주는 차량
+AV = 우리가 학습시키는 차량
 ```
 
-이라고 생각하면 됩니다.
+---
 
-# 자주 발생하는 문제
+# 15. 자주 발생하는 문제
 
-## Q1. 차량이 Junction에서 계속 멈춰요.
+## Q1. 차량이 Junction에서 계속 멈추는 경우
 
-**Road / Connection / Route 문제**인지 확인하세요.
+**Road / Connection / Route 문제**인지 확인
 
 ```text
 Edge 연결
@@ -917,11 +537,11 @@ Right-of-way
 Route
 ```
 
-를 먼저 확인합니다.
+를 먼저 확인
 
-## Q2. 차량이 너무 많이 막혀요.
+## Q2. 차량이 너무 많이 막히는 문제
 
-다음 값을 확인합니다.
+다음 값 확인
 
 ```text
 Traffic Flow
@@ -931,9 +551,9 @@ minGap
 Road capacity
 ```
 
-차량 수가 도로 용량보다 지나치게 많을 수도 있습니다.
+차량 수가 도로 용량보다 지나치게 많을 수도 있음
 
-## Q3. AV가 Action대로 움직이지 않아요.
+## Q3. AV가 Action대로 움직이지 않는 문제
 
 TraCI Action에 대해 SUMO의
 
@@ -943,15 +563,13 @@ speedMode
 laneChangeMode
 ```
 
-등이 영향을 주고 있는지 확인합니다.
+등이 영향을 주고 있는지 확인
 
-## Q4. Observation 크기가 계속 달라져요.
+## Q4. Observation 크기가 계속 달라지는 문제
 
-주변 차량이 없을 때 사용할 **default value 또는 mask**를 정의하여 입력 차원을 고정합니다.
+주변 차량이 없을 때 사용할 **default value 또는 mask**를 정의하여 입력 차원을 고정
 
-## Q5. 학습이 잘 안 돼요.
-
-이 단계에서는 먼저 RL 알고리즘을 의심하지 마세요.
+## Q5. 학습이 잘 안 되는 문제
 
 ```text
 1. Road가 정상인가?
@@ -964,20 +582,21 @@ laneChangeMode
 8. 그 다음 학습 알고리즘을 확인한다.
 ```
 
-> **강화학습을 하기 전에 강화학습이 가능한 환경부터 완성해야 합니다.**
+> **강화학습을 하기 전에 강화학습이 가능한 환경부터 완성해야 함.**
 
 환경이 정상적으로 만들어졌다면 이후에는 같은 Environment를 기반으로
 
-- **Behavior Cloning**
+- **Imitation Learning**
 - **Reinforcement Learning**
 
-을 적용할 수 있습니다.
+을 적용할 수 있음
 
 ---
 
+
 # Next
 
-다음 자료에서는 구축한 환경과 수집한 데이터를 이용하여 모델을 학습합니다.
+다음 시간에는 구축한 환경과 수집한 데이터를 이용하여 모델 학습
 
 ### 3. Model Training — Behavior Cloning
 
