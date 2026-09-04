@@ -32,7 +32,7 @@ SIMULATION = {
                           # 큰 값이 필요. 12km 기준 4000% ≈ 시야 300m.
                           # 도로 길이를 바꾸면 이 값도 비례해 조정할 것.
     "gui_delay": 100.0,
-    "gui_view_width": 500.0,  # GUI 대기 화면에서 보여줄 도로 폭(m).
+    "gui_view_width": 200.0,  # GUI 대기 화면에서 보여줄 도로 폭(m).
                               # 도로 시작 구간이 이 폭만큼 확대되어 보인다.
                               # (▶ 재생 후에는 gui_zoom의 ego 추적으로 전환)
     "gui_track_ego": True,
