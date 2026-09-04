@@ -277,6 +277,8 @@ python view_road.py
 
 이후에는 위 세 명령만 실행하면 됩니다.
 
+<img width="1000" alt="image" src="https://github.com/user-attachments/assets/8862ade4-661d-445f-a89a-77b9b556c8bf" />
+
 ---
 
 ## 핵심
