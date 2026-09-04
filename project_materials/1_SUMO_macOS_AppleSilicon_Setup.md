@@ -271,7 +271,7 @@ source ~/miniforge3/etc/profile.d/conda.sh
 
 ```bash
 conda activate sumo-rl
-cd ~/Artificial-Intelligence-and-Control-for-Autonomous-Driving
+cd Artificial-Intelligence-and-Control-for-Autonomous-Driving/
 python view_road.py
 ```
 
