@@ -7,7 +7,7 @@
 
 # 1. 코드
 
-**도로를 만들고, 교통 흐름을 생성하고, AV가 학습할 수 있는 환경을 구성하는 코드**를 확인합니다.
+**도로를 만들고, 교통 흐름을 생성하고, AV가 학습할 수 있는 환경을 구성하는 코드** 확인
 
 ```text
 Artificial-Intelligence-and-Control-for-Autonomous-Driving/
@@ -155,7 +155,7 @@ SUMO XML / Configuration files
 
 일반적인 실습에서는 `road_builder.py` 자체보다 `road_config.py`의 설정값 수정
 
-> **주의:** `env/sumo/`에 직접 수정한 내용은 다음 생성 시 덮어쓰여질 수 있습니다.
+> **주의:** `env/sumo/`에 직접 수정한 내용은 다음 생성 시 덮어쓰여질 수 있음
 
 ---
 
