@@ -112,6 +112,8 @@ python view_road.py
 
 `sumo-gui` 창이 정상적으로 열리면 기본 설치가 완료된 것입니다.
 
+<img width="1000" alt="image" src="https://github.com/user-attachments/assets/cce998d4-1ae9-458c-b558-9adf714e915f" />
+
 ---
 
 ## 자주 발생하는 문제
