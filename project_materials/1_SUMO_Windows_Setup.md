@@ -7,6 +7,10 @@ Windows에서 `SUMO`, `sumo-gui`, Python/TraCI 기반 RL 환경을 구성하는 
 명령 프롬프트(cmd) 또는 PowerShell에서 아래 명령어를 실행합니다.
 
 ```bash
+winget install --id Git.Git -e
+```
+
+```bash
 git clone https://github.com/bmil-ssu/Artificial-Intelligence-and-Control-for-Autonomous-Driving.git
 ```
 
