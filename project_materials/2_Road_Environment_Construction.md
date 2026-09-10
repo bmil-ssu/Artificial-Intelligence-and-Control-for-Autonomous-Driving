@@ -348,7 +348,19 @@ Ego speed / position / lane
 주변 차량과의 상대 위치
 주변 차량과의 상대 속도
 ```
+만약 observation range를 시각적으로 보고 싶을 경우 `env/mdp_config.py`
 
+```bash
+SIMULATION = {
+...
+
+    "gui_track_ego": True,
+    "gui_show_observation": True,  # ego 주변 관측 거리 안내 테두리 (GUI 전용)
+    "gui_observation_color": (0, 220, 255, 220),  # RGBA, 각 값 0~255
+    "gui_observation_line_width": 0.5,  # 테두리 두께 (m)
+}
+```
+ 
 <img width="994" height="315" alt="image" src="https://github.com/user-attachments/assets/913b15f1-e899-4919-91b5-3b543bb9102a" />
 
 ### Observation 관련 코드
