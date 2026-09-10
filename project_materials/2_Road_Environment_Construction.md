@@ -108,6 +108,7 @@ Observation / Action / Reward 정의
 일반 차량(HV)의 수와 Traffic Flow
 차량 Controller와 주행 특성
 ```
+<img width="1000"  alt="image" src="https://github.com/user-attachments/assets/0e6d5c91-5357-46bb-a794-ed07b800f904" />
 
 즉, 물리적인 도로나 주변 Traffic을 바꾸고 싶다면 가장 먼저 `road_config.py`를 확인하면 됨
 
@@ -181,6 +182,7 @@ road_builder.py
        ↓
 SUMO XML / Configuration files
 ```
+<img width="979" alt="image" src="https://github.com/user-attachments/assets/72a24aa4-71e6-4f67-abf6-083dda6d0204" />
 
 > **주의:** `env/sumo/`에 직접 수정한 내용은 다음 생성 시 덮어쓰여질 수 있음
 
@@ -193,6 +195,7 @@ SUMO XML / Configuration files
 ```bash
 python view_road.py
 ```
+<img width="1000" alt="image" src="https://github.com/user-attachments/assets/60206ffd-8e24-4f1e-90a3-dfd88276f7cc" />
 
 SUMO GUI가 열리면 **▶ Play** 버튼을 눌러 차량 움직임 확인
 
@@ -225,6 +228,7 @@ SIMULATION = {
     "gui_track_ego": True,
 }
 ```
+<img width="990" alt="image" src="https://github.com/user-attachments/assets/f7ca086e-5e68-4d19-858c-a90d4e449b99" />
 
 처음 GUI가 열렸을 때 도로를 **더 확대**해서 보고 싶다면 `gui_view_width`를 줄임
 
@@ -344,6 +348,8 @@ Ego speed / position / lane
 주변 차량과의 상대 위치
 주변 차량과의 상대 속도
 ```
+
+<img width="994" height="315" alt="image" src="https://github.com/user-attachments/assets/913b15f1-e899-4919-91b5-3b543bb9102a" />
 
 ### Observation 관련 코드
 
