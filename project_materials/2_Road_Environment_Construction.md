@@ -397,6 +397,7 @@ Acceleration
 +
 Lane Change {-1, 0, +1}
 ```
+<img width="959" alt="image" src="https://github.com/user-attachments/assets/a20ed2dc-5349-4fc8-a7e8-7348b7dfbf32" />
 
 Action의 범위는 `mdp_config.py`에서 확인하고, 실제 SUMO 차량에 적용하는 로직은 `sumo_env.py`에서 확인
 
