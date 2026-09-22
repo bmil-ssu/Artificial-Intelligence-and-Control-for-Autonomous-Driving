@@ -21,6 +21,7 @@ BCPolicy.load()로 복원
         ↓
 BC 평가 연결 후 SUMO 주행 평가
 ```
+<img width="500" alt="image" src="https://github.com/user-attachments/assets/e22c7a14-3cf4-48c4-8e9e-0960c3b4249e" />
 
 이번 시간 실습은 강화학습이 아닌, 수집 정책의 행동을 모방하는 Imitation Learning임
 
@@ -36,7 +37,7 @@ BC 평가 연결 후 SUMO 주행 평가
 
 ## 2. 실행 준비
 
-아래 명령은 프로젝트 최상위 폴더에서 실행한다. 만약 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화한다.
+아래 명령은 프로젝트 최상위 폴더에서 실행. 만약 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화해야 함.
 
 ```bash
 source ~/miniforge3/etc/profile.d/conda.sh
@@ -44,6 +45,8 @@ conda activate sumo-rl
 ```
 
 ## 3. 데이터 수집과 기존 데이터 선택
+
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/fbf3a9a9-2d76-45f6-bd90-7c4b1a9b0810" />
 
 현재 데이터 수집 시 학습된 모델을 읽는 `--model` 옵션을 추가하여 데이터 수집이 가능함.
 
@@ -66,6 +69,8 @@ python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --epis
 ```bash
 python train_bc.py --data data/pomdp_20260922_095037_217175.npz --epochs 50
 ```
+
+<img width="401" alt="image" src="https://github.com/user-attachments/assets/0012c41e-d486-4c58-95db-98f01ce2695f" />
 
 BC는 저장된 ego 행동을 모방하며, 주변 차량을 IDM으로 사용한다고 해서 ego 행동이 IDM 전문가 행동이 되는 것이 아님. 우리가 수집한 데이터는 기존에 학습되어 있는 자율주행 차량의 주행 데이터이기 때문.
 
@@ -157,10 +162,14 @@ def forward(self, state):
 
 두 행동 값 전체에 MSE를 적용함.
 
+<img width="500" alt="image" src="https://github.com/user-attachments/assets/58186025-5199-456b-aa54-a53b2f20f94b" />
+
 ```python
 pred_action = model(state)
 loss = F.mse_loss(pred_action, target_action)
 ```
+
+<img width="576" alt="image" src="https://github.com/user-attachments/assets/09e90ff5-8a71-443f-8d54-2d4869fb0906" />
 
 학습 배치에서는 다음을 실행함.
 
@@ -211,11 +220,11 @@ python train_bc.py --data data/bc_demo.npz --epochs 50 --batch-size 256 --lr 3e-
 
 학습 중 출력 형식은 다음과 같으며, 숫자는 실행마다 달라짐.
 
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/fda65995-9a16-48ef-95c2-a7fce0e5e25c" />
+
 ```text
 Epoch   1/50 | train_loss=0.149120 | val_loss=0.067159
 ```
-
-두 값 모두 전체 행동 벡터의 MSE임. 현재는 별도의 가감속 MSE, lane CE, lane accuracy를 출력하지 않음.
 
 ```text
 results/bc_demo/
@@ -256,6 +265,9 @@ tensorboard --logdir results
 ```
 
 브라우저에서 **http://localhost:6006** 으로 접속하고 Scalars 화면에서 확인함.
+
+<img width="1000" alt="image" src="https://github.com/user-attachments/assets/e09428c2-0943-44d9-86c0-93440bc6988d" />
+
 여러 학습 결과를 비교하려면 표시할 run을 선택하면 됨.
 
 | 항목 | 의미 |
@@ -332,6 +344,8 @@ python test.py results/bc_demo/model.pt --episodes 5 --nogui
 python test.py results/run_20260907_202220/model.pt --algorithm ppo --episodes 5 --nogui
 ```
 
+<img width="1000" alt="4주차" src="https://github.com/user-attachments/assets/2d5334ac-95e1-4a55-94c3-1f4a3b050c94" />
+
 ### 10.4 BC 모델 로드와 평가 과정
 
 ```text
@@ -359,9 +373,12 @@ SUMO 환경에서 행동 제한·차선 양자화·주행
 - 에피소드당 차선변경 횟수
 - 평균 누적 보상, 평균 에피소드 길이
 
+<img width="579"  alt="image" src="https://github.com/user-attachments/assets/3ee3378c-d55a-4965-ad73-0f35bb1ebbfa" />
+
+
 차선변경 횟수는 실제 실행된 변경을 집계한 `metrics.lane_changes`를 사용함. 검증 MSE가 낮더라도 실제 주행에서 충돌하거나 차선변경이 부족할 수 있으므로, 손실과 주행 지표를 함께 확인해야 함.
 
-BC 체크포인트가 수집 당시 환경을 자동으로 복원하지는 않으므로, 관측 차원뿐 아니라 항목의 순서와 의미도 수집 당시와 일치해야 한다.
+BC 체크포인트가 수집 당시 환경을 자동으로 복원하지는 않으므로, 관측 차원뿐 아니라 항목의 순서와 의미도 수집 당시와 일치해야 함.
 
 ## 11. 결과 해석과 오류 점검
 
