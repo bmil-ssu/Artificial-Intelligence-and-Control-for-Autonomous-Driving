@@ -2,6 +2,8 @@
 
 사용 예시:
     python train_bc.py --data data/pomdp_example.npz
+    tensorboard --logdir results
+    브라우저에서 http://localhost:6006 접속
 
 학습 대상:
     observation -> action_raw
@@ -9,11 +11,15 @@
 BCPolicy는 algorithms/bc.py에 정의된
 state_dim -> 256 -> 256 -> action_dim MLP를 사용하며,
 전체 action vector에 대해 MSE loss로 학습함.
+
+TensorBoard 이벤트 파일은 model.pt와 같은 run 폴더(results/bc_월일_시분/)에
+바로 저장되므로, train.py의 run_* 결과와 나란히 비교할 수 있다.
 """
 
 import argparse
 import csv
 import json
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -231,6 +237,13 @@ def main():
     if not 0 < args.val_fraction < 1:
         parser.error("--val-fraction은 0과 1 사이여야 합니다.")
 
+    # --help와 데이터 유틸 함수는 TensorBoard 없이도 쓸 수 있도록 여기서 import한다.
+    try:
+        from torch.utils.tensorboard import SummaryWriter
+    except ImportError as exc:
+        parser.error(f"TensorBoard를 불러올 수 없습니다: {exc}. "
+                     "현재 Python 환경에서 python -m pip install tensorboard를 실행하세요.")
+
     # Reproducibility
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -342,17 +355,21 @@ def main():
     print(f"train samples : {len(train_idx)}")
     print(f"val samples   : {len(val_idx)}")
     print(f"output        : {out_dir}")
+    print(f"tensorboard   : tensorboard --logdir \"{out_dir.parent}\"  → http://localhost:6006")
     print("=" * 70)
 
     best_val_loss = float("inf")
 
     log_path = out_dir / "training_log.csv"
 
-    with log_path.open(
+    # TensorBoard 이벤트는 model.pt와 같은 폴더(out_dir)에 바로 쓴다 (train.py와 동일한 구조).
+    # closing(): 오류나 Ctrl+C로 종료되어도 대기 중인 이벤트를 파일에 저장한다.
+    with closing(SummaryWriter(log_dir=str(out_dir))) as tb_writer, log_path.open(
         "w",
         newline="",
         encoding="utf-8",
     ) as stream:
+        tb_writer.add_text("config", "```json\n" + json.dumps(config, indent=2) + "\n```", 0)
 
         writer = csv.DictWriter(
             stream,
@@ -397,6 +414,14 @@ def main():
                     out_dir / "model.pt",
                 )
 
+            # x축은 epoch. CSV와 동일한 값을 기록한다.
+            tb_writer.add_scalar("Loss/train", train_loss, epoch)
+            tb_writer.add_scalar("Loss/validation", val_loss, epoch)
+            tb_writer.add_scalar("Loss/best_validation", best_val_loss, epoch)
+            tb_writer.add_scalar("Optimization/learning_rate", optimizer.param_groups[0]["lr"], epoch)
+            # 학습 중에도 브라우저에서 완료된 epoch 결과를 바로 볼 수 있게 한다.
+            tb_writer.flush()
+
             print(
                 f"Epoch {epoch:3d}/{args.epochs} | "
                 f"train_loss={train_loss:.6f} | "
@@ -416,6 +441,7 @@ def main():
     print(f"Last model           : {out_dir / 'last_model.pt'}")
     print(f"Training log         : {log_path}")
     print(f"Evaluation           : python test.py {out_dir / 'model.pt'} --algorithm bc --nogui")
+    print(f"TensorBoard          : tensorboard --logdir \"{out_dir.parent}\"  → http://localhost:6006")
     print("=" * 70)
 
 
