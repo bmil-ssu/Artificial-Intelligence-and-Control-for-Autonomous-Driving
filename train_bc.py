@@ -2,8 +2,6 @@
 
 사용 예시:
     python train_bc.py --data data/pomdp_example.npz
-    tensorboard --logdir results
-    브라우저에서 http://localhost:6006 접속
 
 학습 대상:
     observation -> action_raw
@@ -16,7 +14,6 @@ state_dim -> 256 -> 256 -> action_dim MLP를 사용하며,
 import argparse
 import csv
 import json
-from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -234,13 +231,6 @@ def main():
     if not 0 < args.val_fraction < 1:
         parser.error("--val-fraction은 0과 1 사이여야 합니다.")
 
-    # --help와 데이터 유틸 함수는 TensorBoard 없이도 사용할 수 있다.
-    try:
-        from torch.utils.tensorboard import SummaryWriter
-    except ImportError as exc:
-        parser.error(f"TensorBoard를 불러올 수 없습니다: {exc}. "
-                     "현재 Python 환경에서 python -m pip install tensorboard를 실행하세요.")
-
     # Reproducibility
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -306,10 +296,15 @@ def main():
         lr=args.lr,
     )
 
-    # 결과 폴더
+    # 결과 폴더 — 짧고 읽기 쉬운 이름: bc_월일_시분 (예: bc_0922_1145)
+    # 같은 분(minute)에 여러 번 실행하면 _2, _3 … 접미사가 자동으로 붙는다.
     if args.out_dir is None:
-        timestamp = datetime.now().strftime("bc_%Y%m%d_%H%M%S")
-        out_dir = BASE / "results" / timestamp
+        stem = datetime.now().strftime("bc_%m%d_%H%M")
+        out_dir = BASE / "results" / stem
+        k = 2
+        while out_dir.exists():
+            out_dir = BASE / "results" / f"{stem}_{k}"
+            k += 1
     else:
         out_dir = args.out_dir
 
@@ -352,18 +347,12 @@ def main():
     best_val_loss = float("inf")
 
     log_path = out_dir / "training_log.csv"
-    tb_dir = out_dir / "tensorboard"
-    print(f"TensorBoard logs     : {tb_dir}")
-    print(f"TensorBoard 실행     : tensorboard --logdir \"{out_dir.parent}\"")
-    print("TensorBoard 주소     : http://localhost:6006")
 
-    # 오류나 Ctrl+C로 종료되어도 close()가 대기 중인 이벤트를 저장한다.
-    with closing(SummaryWriter(log_dir=str(tb_dir))) as tb_writer, log_path.open(
+    with log_path.open(
         "w",
         newline="",
         encoding="utf-8",
     ) as stream:
-        tb_writer.add_text("config", "```json\n" + json.dumps(config, indent=2) + "\n```", 0)
 
         writer = csv.DictWriter(
             stream,
@@ -407,14 +396,6 @@ def main():
                     model,
                     out_dir / "model.pt",
                 )
-
-            # x축은 epoch. CSV와 동일한 전체 행동 벡터의 MSE를 기록한다.
-            tb_writer.add_scalar("Loss/train", train_loss, epoch)
-            tb_writer.add_scalar("Loss/validation", val_loss, epoch)
-            tb_writer.add_scalar("Loss/best_validation", best_val_loss, epoch)
-            tb_writer.add_scalar("Optimization/learning_rate", optimizer.param_groups[0]["lr"], epoch)
-            # 학습 중 브라우저에서도 완료된 epoch 결과를 바로 읽을 수 있게 한다.
-            tb_writer.flush()
 
             print(
                 f"Epoch {epoch:3d}/{args.epochs} | "
