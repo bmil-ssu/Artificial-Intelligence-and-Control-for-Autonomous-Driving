@@ -9,7 +9,7 @@
         ↓
 collect_pomdp_data.py: SUMO 주행
         ↓
-NPZ / JSONL 데이터 + 수집 메타데이터
+NPZ / 압축 JSONL 데이터
         ↓
 train_bc.py: observation → action_raw 지도학습
         ↓
@@ -19,7 +19,7 @@ model.pt 저장
         ↓
 BCPolicy.load()로 복원
         ↓
-BC 평가 연결 후 SUMO 주행 평가
+test.py로 SUMO 주행 평가
 ```
 <img width="500" alt="image" src="https://github.com/user-attachments/assets/e22c7a14-3cf4-48c4-8e9e-0960c3b4249e" />
 
@@ -40,7 +40,7 @@ BC 평가 연결 후 SUMO 주행 평가
 아래 명령은 프로젝트 최상위 폴더에서 실행. 만약 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화해야 함.
 
 ```bash
-source ~/miniforge3/etc/profile.d/conda.sh
+source ~/miniforge3/etc/profile.d/conda.sh  # Miniforge가 이 경로에 설치된 경우
 conda activate sumo-rl
 ```
 
@@ -48,26 +48,26 @@ conda activate sumo-rl
 
 <img width="300" alt="image" src="https://github.com/user-attachments/assets/fbf3a9a9-2d76-45f6-bd90-7c4b1a9b0810" />
 
-현재 데이터 수집 시 학습된 모델을 읽는 `--model` 옵션을 추가하여 데이터 수집이 가능함.
+현재 데이터 수집 시 학습된 모델을 읽는 `--model` 옵션을 추가하여 데이터 수집이 가능함. `--policy`를 생략하면 모델 파일에서 PPO/BC를 자동 판별하며, 모델도 생략하면 랜덤 정책을 사용함.
 
 ```bash
-python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --episodes 10
+python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --episodes 10 --name bc_demo
 ```
 
 화면을 보며 수집하려면 다음과 같이 옵션 추가
 
 ```bash
-python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --episodes 10 --gui
+python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --episodes 10 --gui --name bc_demo_gui
 ```
 
 랜덤 정책은 가감속을 `[-1, 1]`에서 균등하게 뽑고, 차선 명령을 오른쪽 15%, 유지 70%, 왼쪽 15%로 선택하고, 차선 유지 정책은 `[0.25, 0.0]`을 반환함. 
 
-수집 결과는 `data/bc_demo.npz`와 `data/bc_demo.jsonl`임. 이름을 생략하면 날짜·시각이 사용됨. 현재 코드는 같은 이름의 파일을 덮어쓸 수 있으므로 재수집 시 새 이름을 사용함.
+첫 번째 명령의 수집 결과는 `data/bc_demo.npz`와 `data/bc_demo.jsonl.gz`임. GUI 예시는 `bc_demo_gui`라는 별도 이름으로 저장함. 이름을 생략하면 날짜·시각이 사용됨. 현재 코드는 같은 이름의 파일을 덮어쓸 수 있으므로 재수집 시 새 이름을 사용함.
 
 이미 모델로 수집한 다음 데이터가 있다면, 현재 수집기를 다시 실행하지 않고 그대로 학습 진행이 가능함.
 
 ```bash
-python train_bc.py --data data/pomdp_20260922_095037_217175.npz --epochs 50
+python train_bc.py --data data/dataset.npz --epochs 100
 ```
 
 <img width="401" alt="image" src="https://github.com/user-attachments/assets/0012c41e-d486-4c58-95db-98f01ce2695f" />
@@ -184,16 +184,16 @@ optimizer.step()
 앞에서 생성한 데이터로 학습함.
 
 ```bash
-python train_bc.py --data data/bc_demo.npz --epochs 50
+python train_bc.py --data data/bc_demo.npz --epochs 100
 ```
 
-같은 수집 결과의 JSONL을 지정해도 된다.
+현재 수집 결과의 `.jsonl.gz`는 학습 코드에서 직접 읽지 못하므로 NPZ를 사용함. 별도로 보유한 압축되지 않은 `.jsonl` 파일이 있다면 아래 명령도 사용할 수 있음.
 
 ```bash
-python train_bc.py --data data/bc_demo.jsonl --epochs 50
+python train_bc.py --data data/bc_demo.jsonl --epochs 100
 ```
 
-이미 데이터가 있다면 `--data` 옵션에 그 파일 경로를 넣는다.
+이미 데이터가 있다면 `--data` 옵션에 그 파일 경로를 넣음.
 
 | 옵션 | 기본값 | 의미 |
 |---|---|---|
@@ -206,12 +206,12 @@ python train_bc.py --data data/bc_demo.jsonl --epochs 50
 | `--device` | `auto` | `auto`, `cpu`, `cuda`, `mps` |
 | `--out-dir` | 자동 생성 | 새 결과 폴더 경로 |
 
-은닉층 크기는 `algorithms/bc.py`에 `256 → 256`으로 고정되어 있음. `--hidden-sizes`와 `--lane-weight` 옵션은 현재 지원하지 않는다.
+은닉층 크기는 `algorithms/bc.py`에 `256 → 256`으로 고정되어 있음.
 
 `auto`는 **CUDA → MPS → CPU** 순서로 사용 가능한 장치를 선택하게 되며, Apple Silicon의 MPS도 지원 여부에 따라 자동 선택됨. CPU를 지정하려면 다음과 같이 실행하면 됨.
 
 ```bash
-python train_bc.py --data data/bc_demo.npz --epochs 50 --batch-size 256 --lr 3e-4 --device cpu --out-dir results/bc_demo
+python train_bc.py --data data/bc_demo.npz --epochs 100 --batch-size 256 --lr 3e-4 --device cpu --out-dir results/bc_demo
 ```
 
 이후 평가 예시는 위 명령의 `results/bc_demo`를 기준으로 함. 결과 폴더는 새로 생성하며 이미 존재하면 중단한다. 재실행할 때는 다른 `--out-dir`을 지정하거나 생략해 자동 이름을 사용함.
@@ -232,8 +232,7 @@ results/bc_demo/
 ├── training_log.csv
 ├── model.pt
 ├── last_model.pt
-└── tensorboard/
-    └── events.out.tfevents.*
+└── events.out.tfevents.*
 ```
 
 | 파일 | 내용 |
@@ -242,13 +241,13 @@ results/bc_demo/
 | `training_log.csv` | `epoch`, `train_loss`, `val_loss` |
 | `model.pt` | 검증 MSE가 가장 낮았던 모델 |
 | `last_model.pt` | 마지막 epoch 모델 |
-| `tensorboard/` | TensorBoard 이벤트 로그 |
+| `events.out.tfevents.*` | 모델과 같은 결과 폴더에 저장되는 TensorBoard 이벤트 로그 |
 
-`--out-dir`을 생략하면 `results/bc_YYYYMMDD_HHMMSS/` 형태로 생성함.
-예를 들어 `results/bc_20260922_143025/model.pt`처럼 날짜와 시각(초)까지만 표시하며,
-뒤에 마이크로초 숫자는 붙이지 않음. 모델 파일명은 `model.pt`로 유지됨.
-같은 초에 시작하여 결과 폴더 이름이 겹치면 기존 결과를 덮어쓰지 않고 중단하므로,
-잠시 후 다시 실행하거나 새로운 `--out-dir`을 지정하면 됨.
+`--out-dir`을 생략하면 `results/bc_MMDD_HHMM/` 형태로 생성함.
+예를 들어 `results/bc_0922_1430/model.pt`처럼 월일과 시각(분)까지만 표시하며,
+모델 파일명은 `model.pt`로 유지됨.
+자동 생성한 폴더 이름이 겹치면 `_1`, `_2` 등의 숫자를 붙여 새 폴더를 생성함.
+직접 지정한 `--out-dir`이 이미 존재하면 중단하므로 새로운 폴더를 지정하면 됨.
 
 학습 종료 시 `Best model`, `Last model`, `Training log`, `Evaluation` 항목이 출력됨. 
 
@@ -256,7 +255,7 @@ results/bc_demo/
 
 ### 9.1 TensorBoard에서 학습 곡선 보기
 
-현재 `train_bc.py`는 매 epoch의 결과를 `결과 폴더/tensorboard/`에 자동 기록함.
+현재 `train_bc.py`는 매 epoch의 결과를 `결과 폴더/`에 자동 기록함. 별도의 `tensorboard/` 하위 폴더는 만들지 않음.
 학습을 실행한 상태에서 다른 터미널을 열고, 프로젝트 최상위 폴더에서 다음 명령을 실행함.
 
 ```bash
@@ -284,7 +283,7 @@ x축은 epoch이며, 학습·검증 loss는 CSV에 기록된 값과 동일함.
 특정 실험만 보려면 해당 폴더를 지정함.
 
 ```bash
-tensorboard --logdir results/bc_demo/tensorboard
+tensorboard --logdir results/bc_demo
 ```
 
 TensorBoard가 설치되어 있지 않으면 학습에 사용하는 Python 환경에서 설치함.
@@ -303,10 +302,10 @@ TensorBoard 기록 기능을 추가한 이후 새로 실행한 학습부터 확�
 
 ### 10.1 화면 없이 BC 평가
 
-프로젝트 최상위 폴더에서 다음과 같이 실행함. `results/bc_demo/model.pt`는 실제 학습 결과의 모델 경로로 바꿔야 함.
+프로젝트 최상위 폴더에서 다음과 같이 실행함. `results/bc_모델폴더명/model.pt`는 실제 학습 결과의 모델 경로로 바꿔야 함.
 
 ```bash
-python test.py results/bc_demo/model.pt --algorithm bc --episodes 5 --nogui
+python test.py results/bc_모델폴더명/model.pt --algorithm bc --episodes 5 --nogui
 ```
 
 `model.pt`는 검증 MSE가 가장 낮았던 모델이고, `last_model.pt`는 마지막 epoch 모델임. 마지막 모델을 평가하려면 파일 경로만 바꾸면 됨.
@@ -316,7 +315,7 @@ python test.py results/bc_demo/model.pt --algorithm bc --episodes 5 --nogui
 `--nogui`를 생략하면 SUMO GUI가 열림.
 
 ```bash
-python test.py results/bc_demo/model.pt --algorithm bc --episodes 3
+python test.py results/bc_모델폴더명/model.pt --algorithm bc --episodes 3
 ```
 
 각 에피소드에서 GUI의 ▶(플레이) 버튼을 눌러 주행을 시작함. 에피소드가 끝나고 다음 창이 열리면 다시 ▶ 버튼을 누른다.
@@ -333,7 +332,7 @@ python test.py results/bc_demo/model.pt --algorithm bc --episodes 3
 기본값 `auto`는 체크포인트 형식으로 BC/PPO를 판별하며, 따라서 다음 명령도 BC 모델을 자동으로 불러옴.
 
 ```bash
-python test.py results/bc_demo/model.pt --episodes 5 --nogui
+python test.py results/bc_모델폴더명/model.pt --episodes 5 --nogui
 ```
 
 `--algorithm bc`를 명시했는데 파일이 PPO 모델이면 오류가 남. 모델 경로를 생략하면 `results/*/model.pt` 중 가장 최근에 수정된 파일을 선택하게 되며, 이때 BC 모델만 검색하는 것은 아니므로, 특정 실험을 평가할 때는 경로를 직접 지정하는 게 좋음.
@@ -402,7 +401,7 @@ BC는 수집 정책의 좋은 행동과 잘못된 행동을 함께 모방함. �
 | 변경할 내용 | 위치 |
 |---|---|
 | 수집 정책·에피소드 수 | `collect_pomdp_data.py --policy ... --episodes ...` |
-| 학습 모델 기반 수집 | 수집기에 모델 로드와 `predict()` 연결 필요 |
+| 학습 모델 기반 수집 | `collect_pomdp_data.py --model 모델경로` |
 | 학습률·배치 크기·epoch | `train_bc.py --lr`, `--batch-size`, `--epochs` |
 | 검증 비율·seed | `train_bc.py --val-fraction`, `--seed` |
 | CPU/GPU 선택 | `train_bc.py --device` |
@@ -420,6 +419,6 @@ BC는 수집 정책의 좋은 행동과 잘못된 행동을 함께 모방함. �
 - [ ] 학습·검증이 에피소드 단위로 분리되는가?
 - [ ] 정규화 통계가 학습 데이터에서만 계산되는가?
 - [ ] 학습·검증 MSE와 best model 저장을 확인했는가?
-- [ ] BC 평가 연결 후 SUMO에서 충돌·완주·차선변경을 확인했는가?
+- [ ] `test.py`로 SUMO에서 충돌·완주·차선변경을 확인했는가?
 
 다음 강화학습 단계에서는 수집 행동을 정답으로 맞추는 대신, 환경과 상호작용하며 보상을 이용해 정책을 개선함.
