@@ -1,870 +1,369 @@
 # 3. Model Training — Behavior Cloning
 
-> **목표:** `collect_pomdp_data.py`로 수집한 주행 데이터를 이용하여, SUMO를 다시 실행하지 않고 `train_bc.py`에서 Behavior Cloning(BC) Policy를 학습함
+> **목표:** 저장한 관측과 행동으로 BC 모델을 학습하고, 모델 저장·복원과 주행 평가에 필요한 연결을 이해한다.
+>
+> **현재 파일 상태:** `train_bc.py`는 BC 학습을 지원하지만, 현재 `collect_pomdp_data.py`는 랜덤/차선 유지 수집만 지원하고 `test.py`는 PPO 전용이다. 기존 데이터로 BC 학습은 가능하며 모델 기반 재수집과 BC 주행 평가에는 해당 실행 코드의 연결이 필요하다.
+>
+> 현재 구현은 **가감속과 차선변경 raw 값 2개를 모두 MSE로 회귀하는 MLP**이다.
 
----
-
-# 1. 이번 단계에서 무엇을 하나요?
-
-앞 단계에서 SUMO 도로 환경과 Observation / Action 구조를 구성했음
-
-이번 단계에서는 다음 두 과정을 수행함
+## 1. 전체 흐름
 
 ```text
-1. 학습용 주행 데이터 수집
-2. 수집한 데이터로 BC Policy 학습
-```
-
-현재 코드 기준 전체 흐름은 다음과 같음
-
-```text
-기존 Policy로 SUMO 주행
+랜덤 또는 차선 유지 정책
         ↓
-collect_pomdp_data.py
+collect_pomdp_data.py: SUMO 주행
         ↓
-NPZ / JSONL Dataset 저장
+NPZ / JSONL 데이터 + 수집 메타데이터
         ↓
-train_bc.py
+train_bc.py: observation → action_raw 지도학습
         ↓
-algorithms/bc.py의 BCPolicy 학습
+algorithms/bc.py의 BCPolicy
         ↓
 model.pt 저장
         ↓
-test.py에서 SUMO 주행 평가
+BCPolicy.load()로 복원
+        ↓
+BC 평가 연결 후 SUMO 주행 평가
 ```
 
-BC 학습 자체에서는 SUMO를 실행하지 않음
+데이터 수집과 주행 평가에는 SUMO가 필요하다. BC 학습 자체는 NumPy와 PyTorch로 저장된 데이터만 읽으며 SUMO를 실행하지 않는다. 보상을 최대화하는 강화학습이 아니라 수집 정책의 행동을 모방하는 지도학습이다.
 
-이미 저장된 Observation과 Action을 불러와 일반적인 supervised learning 방식으로 학습함
+| 파일 | 역할 |
+|---|---|
+| `collect_pomdp_data.py` | 랜덤/차선 유지 정책으로 SUMO 주행, transition 저장 |
+| `train_bc.py` | 데이터 검증, 에피소드 분리, 정규화 통계 계산, MSE 학습 |
+| `algorithms/bc.py` | `BCPolicy` 신경망, 추론, 저장·복원 |
+| `test.py` | 현재 PPO 모델의 SUMO 주행 평가 |
+| `env/sumo_env.py` | raw 행동 제한, 차선 명령 양자화, 안전 조건에 따른 실행 |
 
----
+## 2. 실행 준비
 
-# 2. 관련 코드
-
-현재 BC 학습에 직접 관련된 파일은 다음과 같음
-
-```text
-Artificial-Intelligence-and-Control-for-Autonomous-Driving/
-│
-├── collect_pomdp_data.py
-├── train_bc.py
-├── test.py
-└── algorithms/
-    ├── __init__.py
-    └── bc.py
-```
-
-| 파일 | 역할 | 주로 확인할 내용 |
-|---|---|---|
-| `collect_pomdp_data.py` | SUMO에서 주행 데이터를 수집하여 NPZ/JSONL로 저장 | 수집 episode 수, 저장 경로, 사용 Policy |
-| `train_bc.py` | Dataset을 읽고 BC 모델을 학습 | epoch, batch size, learning rate, validation split |
-| `algorithms/bc.py` | 실제 BC Policy Network 정의 | MLP 구조, acceleration head, lane-change head |
-| `test.py` | 학습된 BC Policy를 SUMO에 넣어 평가 | model path, `--algorithm bc`, GUI 사용 여부 |
-
----
-
-# 3. Step 1 — 주행 데이터 수집
-
-현재 사용 중인 데이터 수집 명령은 다음과 같음
+아래 명령은 프로젝트 최상위 폴더에서 실행한다. 기존 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화한다.
 
 ```bash
-python collect_pomdp_data.py \
-    --model results/run_20260907_202220/model.pt \
-    --episodes 100
+conda activate sumo-rl
 ```
 
-이 명령은 지정한 `model.pt`을 이용하여 SUMO에서 100개 episode를 주행하고, BC 학습에 사용할 transition을 저장하는 방식임
+다른 환경을 사용한다면 NumPy와 PyTorch가 설치되어 있어야 한다. 수집·평가에는 프로젝트의 SUMO/TraCI 실행 환경도 필요하다.
 
-즉, 현재 Pipeline에서는 먼저 주행을 수행하여 Dataset을 만들고, 이후 `train_bc.py`가 이 파일만 읽어서 학습함
+## 3. 데이터 수집과 기존 데이터 선택
 
-```text
-model.pt
-   ↓
-SUMO 주행 100 episodes
-   ↓
-Observation / Action 기록
-   ↓
-*.npz 또는 *.jsonl
+현재 수집기의 기본 정책은 `random`이다. 학습된 모델을 읽는 `--model` 옵션은 없다.
+
+```bash
+python collect_pomdp_data.py --episodes 100 --policy random --name bc_demo
 ```
 
-> **중요:** BC는 수집된 행동을 그대로 모방하므로, 어떤 Policy로 데이터를 수집했는지가 최종 BC 성능에 직접적인 영향을 줌
+차선 유지 정책으로 화면을 보며 수집하려면 다음과 같이 실행한다.
 
----
-
-# 4. `train_bc.py`가 읽는 데이터
-
-`train_bc.py`는 `.npz` 또는 `.jsonl` 파일을 지원함
-
-## 4.1 NPZ 형식
-
-NPZ에서는 다음 key를 사용함
-
-```text
-observation
-action_raw
-lane_change
-episode
+```bash
+python collect_pomdp_data.py --episodes 10 --policy keep-lane --gui --name bc_demo_gui
 ```
 
-코드에서는 다음과 같이 읽음
+랜덤 정책은 가감속을 `[-1, 1]`에서 균등하게 뽑고, 차선 명령을 오른쪽 15%, 유지 70%, 왼쪽 15%로 선택한다. 차선 유지 정책은 `[0.25, 0.0]`을 반환한다. 둘 다 전문가 주행 정책이 아니므로 파이프라인 확인용으로 해석한다.
+
+수집 결과는 `data/bc_demo.npz`와 `data/bc_demo.jsonl`이다. 이름을 생략하면 날짜·시각이 사용된다. 현재 코드는 같은 이름의 파일을 덮어쓸 수 있으므로 재수집 시 새 이름을 사용한다.
+
+이미 모델로 수집한 다음 데이터가 있다면, 현재 수집기를 다시 실행하지 않고 그대로 학습할 수 있다.
+
+```bash
+python train_bc.py --data data/pomdp_20260922_095037_217175.npz --epochs 50
+```
+
+이 기존 데이터의 `*.metadata.json`에는 PPO 모델로 수집했다는 정보가 기록되어 있다. 다만 **현재 수집기는 metadata 파일을 생성하지 않으며**, 기존 데이터가 만들어진 당시의 모델 기반 수집 코드와 현재 파일은 다르다. 새로 학습된 차량을 돌려 데이터를 수집하려면 모델 로드와 `policy.predict(obs)` 호출을 수집기에 연결해야 한다.
+
+BC는 저장된 ego 행동을 모방한다. 배경차가 IDM을 사용한다고 해서 ego 행동이 IDM 전문가 행동이 되는 것은 아니다.
+
+## 4. BC 학습에 사용하는 데이터
+
+NPZ와 JSONL 모두 다음 세 필드만 사용한다.
+
+| 필드 | 배열 형태 | 용도 |
+|---|---|---|
+| `observation` | `(N, state_dim)` | 현재 시점의 부분관측 |
+| `action_raw` | `(N, 2)` | 정답 가감속·차선변경 raw 값 |
+| `episode` | `(N,)` | 학습·검증 분리용 에피소드 ID |
+
+`N`은 전체 transition 수이다. `state_dim`은 데이터에서 읽으며, 현재 환경의 관측은 31차원이다. 코드의 `state`는 SUMO 전체 내부 상태가 아니라 에이전트가 받는 부분관측을 의미한다.
+
+NPZ에서는 다음과 같이 읽는다.
 
 ```python
 with np.load(path, allow_pickle=False) as data:
-    obs, actions, lanes, episodes = [data[k] for k in
-        ("observation", "action_raw", "lane_change", "episode")]
+    obs = data["observation"]
+    actions = data["action_raw"]
+    episodes = data["episode"]
 ```
 
-`detected_xy`와 같은 추가 정보가 저장되어 있어도 BC 학습에는 사용하지 않음
+JSONL에서는 각 줄의 동일한 필드를 읽는다. `lane_change`, reward, next observation, privileged state, 감지 차량 좌표는 현재 BC 학습에 사용하지 않는다. 따라서 NPZ의 object 배열인 `detected_xy`를 읽기 위해 pickle을 허용할 필요도 없다.
 
-현재 BC가 실제로 사용하는 값은 다음과 같음
-
-```text
-Observation  → observation
-Acceleration → action_raw[:, 0]
-Lane Change  → lane_change
-Episode ID   → episode
-```
-
-즉, 현재 BC는 **단일 시점의 observation `o_t`만 입력으로 사용**함
-
-Observation history나 privileged state는 사용하지 않음
-
----
-
-# 5. Dataset shape 및 값 검증
-
-`load_data()`에서는 학습 전에 Dataset이 정상적인지 확인함
-
-Observation은 다음 형태여야 함
-
-```text
-(N, obs_dim)
-```
-
-Action은 다음 형태여야 함
-
-```text
-(N, 2)
-```
-
-Lane change와 episode index는 다음 형태여야 함
-
-```text
-(N,)
-```
-
-또한 다음 조건을 검사함
-
-```text
-Observation / Action에 NaN 또는 Inf가 없는지 확인
-Raw action 범위가 [-1, 1]인지 확인
-Lane change가 {-1, 0, +1} 중 하나인지 확인
-```
-
-조건을 만족하지 않으면 학습 전에 `ValueError`가 발생함
-
-따라서 BC 학습이 시작되지 않는 경우에는 먼저 저장된 Dataset의 shape과 action 범위를 확인하면 됨
-
----
-
-# 6. Lane Change Label 변환
-
-환경에서 저장된 lane change는 다음 값을 사용함
-
-```text
-{-1, 0, +1}
-```
-
-하지만 `CrossEntropyLoss`는 class index가 `0, 1, 2` 형태여야 하므로 `train_bc.py`에서 다음과 같이 변환함
+### 행동 값의 의미
 
 ```python
-(1 - lanes).astype(np.int64)
+action_raw = [accel_raw, lane_change_raw]
 ```
 
-따라서 현재 코드 기준 mapping은 다음과 같음
+가감속 raw 값은 물리 단위의 가속도 자체가 아니라 환경에 전달하는 제어 입력이다. 학습 정답은 두 축 모두 `[-1, 1]` 범위이다.
 
-| 저장된 `lane_change` | BC class |
-|---:|---:|
-| `+1` | `0` |
-| `0` | `1` |
-| `-1` | `2` |
+현재 수집기는 생성한 정책 행동을 환경에 전달하고 그 값을 `action_raw`로 저장한다. 별도의 `lane_change` 필드는 양자화된 요청 명령이며, 실제 차선변경 성공 여부와는 다르다. JSONL의 `action.lane_change_applied`로 실행 여부를 확인할 수 있다.
 
-`algorithms/bc.py`의 `predict()`에서는 다시 역변환하여 환경에서 사용하는 lane command로 반환함
+### 학습 전 검증
+
+`load_data()`는 다음 조건을 확인한다.
+
+- 데이터가 비어 있지 않고 관측이 `(N, state_dim)` 형태인지
+- 행동이 `(N, 2)`, 에피소드 ID가 `(N,)`인지
+- 세 배열의 sample 수가 같은지
+- 관측과 행동에 NaN 또는 Inf가 없는지
+- 에피소드 ID가 유한한 정수 값인지
+- 두 raw 행동 값이 모두 `[-1, 1]` 범위인지
+
+차선 raw 값은 연속값이므로 반드시 `-1`, `0`, `+1` 중 하나일 필요는 없다. 현재 코드에는 차선 class index 변환이 없다.
+
+## 5. 학습·검증 분리와 정규화
+
+`split_episodes()`는 에피소드 ID를 seed에 따라 섞은 뒤 검증 에피소드를 선택한다. 같은 에피소드의 transition이 학습과 검증에 함께 들어가지 않는다.
+
+기본 `--val-fraction 0.2`에서 100개 에피소드는 학습 80개, 검증 20개로 나뉜다. 에피소드 길이는 서로 다르므로 transition 수가 정확히 80:20이 되는 것은 아니다. 최소 2개 에피소드가 필요하다.
+
+정규화 통계는 학습 관측에서만 계산한다.
 
 ```python
-return np.asarray([accel.item(), 1 - lane.item()], dtype=np.float32)
-```
-
-즉, **Dataset → 학습 class → 환경 action** 사이의 변환이 코드 내부에서 처리됨
-
----
-
-# 7. Train / Validation 분리
-
-BC 학습에서는 transition을 무작위로 섞어서 나누는 것이 아니라 **episode 단위로 train / validation을 분리**함
-
-관련 함수는 다음과 같음
-
-```python
-def split_episodes(episodes, val_fraction, seed):
-    ...
-```
-
-기본 validation 비율은 다음과 같음
-
-```text
---val-fraction 0.2
-```
-
-예를 들어 100 episodes를 수집했다면 대략
-
-```text
-Train      : 80 episodes
-Validation : 20 episodes
-```
-
-형태로 분리됨
-
-같은 episode의 일부 timestep이 train에 들어가고 나머지가 validation에 들어가는 leakage를 방지하기 위한 구조임
-
----
-
-# 8. Observation 정규화
-
-BC 모델에 Observation을 그대로 넣지 않고 train data의 평균과 표준편차를 이용하여 정규화함
-
-`train_bc.py`에서 train data만 이용하여 통계값을 계산함
-
-```python
-model.obs_mean.copy_(
-    torch.as_tensor(obs[train_idx].mean(0), device=device)
-)
-
-obs_std = obs[train_idx].std(0)
+obs_mean = obs[train_idx].mean(axis=0)
+obs_std = obs[train_idx].std(axis=0)
 obs_std = np.where(obs_std < 1e-6, 1.0, obs_std)
-
-model.obs_std.copy_(
-    torch.as_tensor(obs_std, device=device)
-)
+model.obs_mean.copy_(torch.as_tensor(obs_mean, device=device))
+model.obs_std.copy_(torch.as_tensor(obs_std, device=device))
 ```
 
-Validation data는 평균과 표준편차 계산에 사용하지 않음
+학습에서 값이 일정한 항목은 표준편차를 1로 둔다. 매우 작은 값으로 나누어 검증·추론 입력이 폭증하는 것을 방지하기 위한 처리이다.
 
-따라서 validation information이 training normalization에 섞이지 않도록 구성되어 있음
-
-실제 `BCPolicy.forward()`에서는 다음 계산을 수행함
+모델 내부에서는 다음 계산을 수행한다.
 
 ```python
-(obs - self.obs_mean) / self.obs_std
+state = (state - self.obs_mean) / self.obs_std
 ```
 
-`obs_mean`과 `obs_std`는 model buffer로 저장되므로 학습 후 추론에서도 같은 정규화 값을 사용함
+평균과 표준편차는 `register_buffer()`로 등록되어 가중치와 함께 저장된다. 검증과 주행 추론에서도 동일한 통계를 사용한다.
 
----
-
-# 9. `algorithms/bc.py` — BC Policy 구조
-
-현재 BC Policy는 **shared MLP + 2개의 output head** 구조임
+## 6. BCPolicy 구조
 
 ```text
-Observation
-    ↓
-Normalization
-    ↓
-Shared MLP
-    ↓
- ┌───────────────┴───────────────┐
- ↓                               ↓
-Acceleration Head           Lane Head
-1-dimensional output        3-class logits
-```
-
-기본 hidden layer 크기는 다음과 같음
-
-```text
-256 → 256
-```
-
-`BCPolicy`의 핵심 부분은 다음과 같음
-
-```python
-self.trunk = build_mlp(
-    obs_dim,
-    hidden_sizes,
-    activation="relu"
-)
-
-self.accel_head = nn.Linear(hidden_sizes[-1], 1)
-self.lane_head = nn.Linear(hidden_sizes[-1], 3)
-```
-
-즉, Observation에서 공통 feature를 추출한 뒤
-
-```text
-Acceleration prediction
-Lane-change classification
-```
-
-을 동시에 수행함
-
----
-
-# 10. Acceleration 출력
-
-Acceleration은 연속값이므로 regression으로 학습함
-
-BC Policy에서는 acceleration head의 출력에 `tanh`를 적용함
-
-```python
-accel = torch.tanh(self.accel_head(z))
-```
-
-따라서 model이 예측하는 acceleration raw action은 항상 다음 범위에 들어감
-
-```text
-[-1, 1]
-```
-
-이는 Dataset 검증 시 사용하는 `action_raw` 범위와 동일함
-
----
-
-# 11. Lane Change 출력
-
-Lane change는 3-class classification으로 처리함
-
-```python
-self.lane_head = nn.Linear(hidden_sizes[-1], 3)
-```
-
-forward 결과는 class probability가 아니라 **3개의 logits**임
-
-```python
-return accel, self.lane_head(z)
-```
-
-Deterministic evaluation에서는 가장 큰 logit을 가지는 class를 선택함
-
-```python
-lane = logits.argmax(-1)
-```
-
-Stochastic prediction을 사용할 경우에는 categorical distribution에서 sampling할 수 있도록 구현되어 있음
-
-```python
-torch.distributions.Categorical(logits=logits).sample()
-```
-
-기본 `predict()` 설정은 `deterministic=True`임
-
----
-
-# 12. BC Loss
-
-`train_bc.py`에서는 acceleration과 lane change에 서로 다른 loss를 사용함
-
-## 12.1 Acceleration loss
-
-Acceleration은 continuous action이므로 MSE를 사용함
-
-```python
-mse = F.mse_loss(pred, accel)
-```
-
-즉,
-
-```text
-Predicted Acceleration
-        ↕
-Dataset Acceleration
-```
-
-차이를 줄이도록 학습함
-
-## 12.2 Lane-change loss
-
-Lane change는 3-class classification이므로 Cross Entropy를 사용함
-
-```python
-ce = F.cross_entropy(logits, lane)
-```
-
-## 12.3 Total loss
-
-최종 loss는 다음과 같음
-
-```python
-loss = mse + lane_weight * ce
-```
-
-기본 설정은
-
-```text
---lane-weight 1.0
-```
-
-이므로 기본적으로
-
-```text
-Total Loss = Acceleration MSE + Lane Cross Entropy
-```
-
-형태임
-
-Lane-change loss의 영향을 더 크게 또는 작게 만들고 싶다면 `--lane-weight`를 변경하면 됨
-
----
-
-# 13. BC 학습 실행
-
-예를 들어 수집한 파일이 `data/pomdp_example.npz`라면 다음과 같이 학습함
-
-```bash
-python train_bc.py --data data/pomdp_example.npz
-```
-
-기본 학습 설정은 다음과 같음
-
-| Argument | 기본값 | 의미 |
-|---|---:|---|
-| `--epochs` | `50` | 전체 학습 epoch 수 |
-| `--batch-size` | `256` | mini-batch 크기 |
-| `--lr` | `3e-4` | Adam learning rate |
-| `--hidden-sizes` | `256 256` | MLP hidden layer 크기 |
-| `--val-fraction` | `0.2` | validation episode 비율 |
-| `--lane-weight` | `1.0` | lane classification loss 가중치 |
-| `--seed` | `0` | random seed |
-| `--device` | `auto` | 학습 device |
-
-예를 들어 학습 설정을 직접 지정하려면 다음과 같이 실행 가능함
-
-```bash
-python train_bc.py \
-    --data data/pomdp_example.npz \
-    --epochs 100 \
-    --batch-size 256 \
-    --lr 3e-4 \
-    --hidden-sizes 256 256 \
-    --lane-weight 1.0
-```
-
----
-
-# 14. Device 설정
-
-현재 `--device`는 다음 옵션을 지원함
-
-```text
-auto
-cpu
-cuda
-mps
-```
-
-기본값은 `auto`임
-
-현재 코드에서 `auto`는 다음과 같이 동작함
-
-```python
-if device == "auto":
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-```
-
-따라서 NVIDIA GPU가 있으면 CUDA를 사용하고, 그렇지 않으면 CPU를 사용함
-
-Mac에서 MPS를 사용하려면 현재 코드 기준으로 자동 선택되지 않으므로 다음과 같이 직접 지정하면 됨
-
-```bash
-python train_bc.py \
-    --data data/pomdp_example.npz \
-    --device mps
-```
-
----
-
-# 15. 실제 Training Loop
-
-한 epoch에서 수행되는 과정은 다음과 같음
-
-```text
-DataLoader에서 batch 생성
+부분관측 (state_dim)
         ↓
-Observation을 BCPolicy에 입력
+정규화
         ↓
-Acceleration + Lane logits 예측
+Linear(state_dim, 256) + ReLU
         ↓
-MSE + Cross Entropy 계산
+Linear(256, 256) + ReLU
         ↓
-Backpropagation
+Linear(256, 2)
         ↓
-Gradient clipping
-        ↓
-Adam optimizer update
+[accel_raw, lane_change_raw]
 ```
 
-코드에서는 다음과 같이 학습함
+현재 `algorithms/bc.py`의 구현은 다음과 같다.
+
+```python
+self.fc1 = nn.Linear(state_dim, 256)
+self.fc2 = nn.Linear(256, 256)
+self.fc3 = nn.Linear(256, action_dim)
+```
+
+```python
+def forward(self, state):
+    state = (state - self.obs_mean) / self.obs_std
+    x = torch.relu(self.fc1(state))
+    x = torch.relu(self.fc2(x))
+    return self.fc3(x)
+```
+
+가감속과 차선변경을 하나의 출력층에서 모두 회귀한다. 별도의 lane classification head, logits, argmax 변환은 없다. 출력층에는 tanh나 clipping이 없으므로 모델 출력 자체가 `[-1, 1]`에 제한되지는 않는다.
+
+단일 시점의 관측만 사용하며, 과거 관측을 기억하는 RNN이나 belief 추정 구조는 없다. POMDP 환경에서 사용하는 feed-forward BC baseline이다.
+
+## 7. 손실과 학습 과정
+
+두 행동 값 전체에 MSE를 적용한다.
+
+```python
+pred_action = model(state)
+loss = F.mse_loss(pred_action, target_action)
+```
+
+배치 크기가 `B`이면 손실은 `B × 2`개 원소의 제곱오차 평균이다. 가감속과 차선변경에 동일한 가중치를 사용한다. Cross Entropy나 별도의 차선 손실 가중치는 없다.
+
+학습 배치에서는 다음을 실행한다.
 
 ```python
 optimizer.zero_grad()
 loss.backward()
-torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 optimizer.step()
 ```
 
-Gradient norm을 `1.0`으로 clipping하여 지나치게 큰 gradient가 발생하는 것을 제한함
+최적화기는 Adam이며 현재 학습 코드에는 gradient clipping이 없다. 검증에서는 gradient 계산과 가중치 갱신을 하지 않는다. 에피소드 분리 후 학습 DataLoader는 sample을 섞고 검증 DataLoader는 섞지 않는다.
 
----
+## 8. 학습 실행과 옵션
 
-# 16. 학습 중 출력되는 값
+앞에서 생성한 데이터로 학습한다.
 
-각 epoch마다 train / validation 성능을 계산함
-
-주요 metric은 다음과 같음
-
-```text
-loss
-accel_mse
-lane_ce
-lane_accuracy
+```bash
+python train_bc.py --data data/bc_demo.npz --epochs 50
 ```
 
-터미널에는 다음과 같은 형태로 출력됨
+같은 수집 결과의 JSONL을 지정해도 된다.
 
-```text
-epoch   1/50 train=... val=... accel_mse=... lane_acc=...
+```bash
+python train_bc.py --data data/bc_demo.jsonl --epochs 50
 ```
 
-확인해야 할 값은 다음과 같음
+수집이 끝난 파일을 지정한다. 이미 데이터가 있다면 재수집 없이 `--data`에 그 파일 경로를 넣는다.
 
-```text
-train loss 감소 여부
-validation loss 감소 여부
-acceleration MSE 크기
-lane-change accuracy
+| 옵션 | 기본값 | 의미 |
+|---|---|---|
+| `--data` | 필수 | NPZ 또는 JSONL 파일 경로 |
+| `--epochs` | `50` | 전체 학습 반복 횟수 |
+| `--batch-size` | `256` | 배치 크기 |
+| `--lr` | `3e-4` | Adam 학습률 |
+| `--val-fraction` | `0.2` | 검증 에피소드 비율 |
+| `--seed` | `0` | 데이터 분리와 난수 생성 seed |
+| `--device` | `auto` | `auto`, `cpu`, `cuda`, `mps` |
+| `--out-dir` | 자동 생성 | 새 결과 폴더 경로 |
+
+은닉층 크기는 `algorithms/bc.py`에 `256 → 256`으로 고정되어 있다. `--hidden-sizes`와 `--lane-weight` 옵션은 현재 지원하지 않는다.
+
+`auto`는 **CUDA → MPS → CPU** 순서로 사용 가능한 장치를 선택한다. Apple Silicon의 MPS도 지원 여부에 따라 자동 선택된다. CPU를 지정하려면 다음과 같이 실행한다.
+
+```bash
+python train_bc.py --data data/bc_demo.npz --epochs 50 --batch-size 256 --lr 3e-4 --device cpu --out-dir results/bc_demo
 ```
 
-단, validation loss가 낮다고 해서 SUMO에서 반드시 안정적으로 주행한다는 의미는 아님
+이후 평가 예시는 위 명령의 `results/bc_demo`를 기준으로 한다. 결과 폴더는 새로 생성하며 이미 존재하면 중단한다. 재실행할 때는 다른 `--out-dir`을 지정하거나 생략해 자동 이름을 사용한다.
 
-최종적으로 `test.py`를 통한 closed-loop 주행 평가가 필요함
+## 9. 로그와 저장 결과
 
----
-
-# 17. Best Model 저장
-
-Validation loss가 가장 낮아질 때마다 다음 파일을 저장함
+학습 중 출력 형식은 다음과 같다. 숫자는 실행마다 달라진다.
 
 ```text
-model.pt
+Epoch   1/50 | train_loss=0.149120 | val_loss=0.067159
 ```
 
-학습 마지막 epoch의 모델도 별도로 저장함
+두 값 모두 전체 행동 벡터의 MSE이다. 현재는 별도의 가감속 MSE, lane CE, lane accuracy를 출력하지 않는다.
 
 ```text
-last_model.pt
+results/bc_demo/
+├── config.json
+├── training_log.csv
+├── model.pt
+└── last_model.pt
 ```
-
-즉,
-
-```text
-model.pt
-→ validation loss가 가장 낮았던 모델
-
-last_model.pt
-→ 마지막 epoch의 모델
-```
-
-일반적으로 평가에는 `model.pt`을 사용하는 것이 적절함
-
----
-
-# 18. 결과 폴더
-
-`--out-dir`을 지정하지 않으면 다음과 같은 형식으로 자동 생성됨
-
-```text
-results/
-└── bc_YYYYMMDD_HHMMSS_microsecond/
-    ├── config.json
-    ├── training_log.csv
-    ├── model.pt
-    └── last_model.pt
-```
-
-각 파일의 의미는 다음과 같음
 
 | 파일 | 내용 |
 |---|---|
-| `config.json` | 학습 hyperparameter, device, obs_dim, train/validation episode 정보 |
-| `training_log.csv` | epoch별 train / validation metric |
-| `model.pt` | best validation model |
-| `last_model.pt` | 마지막 epoch model |
+| `config.json` | 데이터 경로, 학습 설정, device, `state_dim`, `action_dim`, sample 수, 분할 에피소드 ID |
+| `training_log.csv` | `epoch`, `train_loss`, `val_loss` |
+| `model.pt` | 검증 MSE가 가장 낮았던 모델 |
+| `last_model.pt` | 마지막 epoch 모델 |
 
-`config.json`에는 실제로 사용된 train episode와 validation episode도 기록됨
+`--out-dir`을 생략하면 `results/bc_YYYYMMDD_HHMMSS_microsecond/` 형태로 생성한다.
 
-따라서 나중에 같은 실험을 확인할 때 유용함
+`model.pt`는 raw state_dict만 담는 파일이 아니다. `BCPolicy.save()`는 `algorithm`, `state_dim`, `action_dim`, `state_dict`를 저장한다. 정규화 통계도 state_dict에 포함된다. optimizer 상태와 학습 재개 옵션은 제공하지 않는다.
 
----
+학습 종료 시 `Best model`, `Last model`, `Training log`, `Evaluation` 항목이 출력된다. 기본적으로 평가에는 `model.pt`를 사용한다. 단, 출력되는 `Evaluation` 명령의 `--algorithm bc`는 현재 `test.py`에서 지원하지 않으므로 그대로 실행할 수 없다.
 
-# 19. 학습 결과 확인
-
-학습이 끝나면 터미널에 best model 경로와 평가 명령이 출력됨
-
-```text
-최적 검증 모델: .../model.pt
-주행 평가: python test.py .../model.pt --algorithm bc --nogui
-```
-
-예를 들어 결과가 다음 폴더에 저장되었다면
-
-```text
-results/bc_20260922_100000_000000/model.pt
-```
-
-다음과 같이 평가함
-
-```bash
-python test.py \
-    results/bc_20260922_100000_000000/model.pt \
-    --algorithm bc \
-    --nogui
-```
-
-GUI로 실제 움직임을 확인하고 싶다면 `--nogui`를 제거하면 됨
-
----
-
-# 20. `BCPolicy.predict()`가 환경에 Action을 전달하는 과정
-
-평가 시에는 현재 Observation 하나를 입력으로 받아 action을 생성함
-
-```text
-Current Observation o_t
-        ↓
-Observation normalization
-        ↓
-Shared MLP
-        ↓
-Acceleration + Lane logits
-        ↓
-Lane class 선택
-        ↓
-[accel_raw, lane_cmd]
-```
-
-`predict()`의 최종 출력 형식은 다음과 같음
+## 10. 모델 복원과 행동 생성
 
 ```python
-[accel_raw, lane_cmd]
+from algorithms.bc import BCPolicy
+
+policy = BCPolicy.load("results/bc_demo/model.pt", device="cpu")
+# obs는 환경에서 받은 단일 관측으로 shape이 (policy.state_dim,)이어야 한다.
+# action = policy.predict(obs)
 ```
 
-따라서 `test.py`와 SUMO Environment는 기존 action interface를 그대로 사용할 수 있음
-
----
-
-# 21. 현재 BC 모델의 특징
-
-현재 구현의 특징을 정리하면 다음과 같음
+`predict()`는 단일 관측을 float32 텐서로 바꾸고 모델과 같은 장치로 옮긴 뒤, 정규화와 신경망 계산을 수행한다. 결과는 길이 2의 NumPy 배열이다. `deterministic` 인자는 평가 인터페이스 호환용이며, 현재 BC는 False여도 확률적으로 샘플링하지 않는다.
 
 ```text
-입력
-→ 단일 시점 Observation o_t
-
-Policy
-→ Feed-forward MLP
-
-Acceleration
-→ Regression + tanh
-
-Lane Change
-→ 3-class Classification
-
-Training
-→ Offline supervised learning
-
-Validation
-→ Episode 단위 split
-
-Environment interaction during BC training
-→ 없음
+관측 → 정규화 → MLP → raw 행동 2개
+        ↓
+환경에서 [-1, 1]로 제한
+        ↓
+차선 raw 값을 {-1, 0, +1} 명령으로 양자화
+        ↓
+차선 범위·안전 조건에 따라 실행
 ```
 
-즉, 현재 BC는 **POMDP에서 과거 observation history를 추정하는 모델이 아니라, 현재 observation만으로 action을 예측하는 baseline**임
+현재 `ACTION["lane_change_threshold"]`는 `0.5`이다.
 
----
-
-# 22. 자주 확인할 부분
-
-## Q1. Dataset을 읽을 수 없다고 나오는 경우
-
-`.npz` 또는 `.jsonl`인지 확인함
-
-NPZ라면 최소한 다음 key가 있는지 확인함
-
-```text
-observation
-action_raw
-lane_change
-episode
-```
-
----
-
-## Q2. Action range 오류가 발생하는 경우
-
-`action_raw` 값이 `[-1, 1]` 범위인지 확인함
-
-Lane change는 반드시 다음 값 중 하나여야 함
-
-```text
--1, 0, +1
-```
-
----
-
-## Q3. Lane accuracy가 지나치게 높은데 실제 차선 변경을 하지 않는 경우
-
-Dataset에서 `lane_change = 0`이 대부분인지 확인해야 함
-
-Keep-lane sample이 지나치게 많으면 높은 accuracy가 나와도 실제 lane-change 학습은 충분하지 않을 수 있음
-
-따라서 class별 sample 수를 함께 확인하는 것이 좋음
-
----
-
-## Q4. Train loss는 감소하지만 validation loss가 증가하는 경우
-
-Overfitting 가능성이 있음
-
-다음 값을 조절할 수 있음
-
-```text
---epochs
---hidden-sizes
---lr
-```
-
-또는 더 다양한 episode를 수집할 필요가 있음
-
----
-
-## Q5. Validation 성능은 좋은데 SUMO 주행이 불안정한 경우
-
-BC는 저장된 state distribution에서 action을 맞추는 학습임
-
-실제 SUMO에서 model이 작은 실수를 하면 Dataset에서 적게 본 state로 이동할 수 있음
-
-따라서 반드시 closed-loop 주행 결과를 확인해야 함
-
-현재 단계에서는 이론보다 다음 순서로 debugging하는 것이 중요함
-
-```text
-Dataset 값 확인
-    ↓
-Train / Validation metric 확인
-    ↓
-BC output range 확인
-    ↓
-SUMO에서 실제 주행 확인
-```
-
----
-
-# 23. 실습 순서 정리
-
-현재 코드 기준 BC 학습 과정은 다음 순서로 진행하면 됨
-
-### 1. 데이터 수집
-
-```bash
-python collect_pomdp_data.py \
-    --model results/run_20260907_202220/model.pt \
-    --episodes 100
-```
-
-### 2. 생성된 Dataset 확인
-
-```text
-*.npz 또는 *.jsonl
-```
-
-### 3. BC 학습
-
-```bash
-python train_bc.py --data data/pomdp_example.npz
-```
-
-### 4. Training log 확인
-
-```text
-training_log.csv
-```
-
-### 5. Best model 확인
-
-```text
-model.pt
-```
-
-### 6. SUMO에서 평가
-
-```bash
-python test.py results/.../model.pt --algorithm bc --nogui
-```
-
----
-
-# 24. 코드 수정 시 주로 볼 위치
-
-| 수정하고 싶은 내용 | 확인할 위치 |
+| 차선 raw 값 | 요청 명령 |
 |---|---|
-| 수집 episode 수 | `collect_pomdp_data.py` 실행 시 `--episodes` |
-| BC 입력 Observation | Dataset의 `observation` 및 Environment observation 구성 |
-| MLP 크기 | `train_bc.py --hidden-sizes` |
-| Network output 구조 | `algorithms/bc.py` |
-| Learning rate | `train_bc.py --lr` |
-| Batch size | `train_bc.py --batch-size` |
-| Lane loss 중요도 | `train_bc.py --lane-weight` |
-| Validation 비율 | `train_bc.py --val-fraction` |
-| 학습 epoch | `train_bc.py --epochs` |
-| CPU / GPU / MPS | `train_bc.py --device` |
-| 저장 위치 | `train_bc.py --out-dir` |
-| 실제 주행 성능 | `test.py` |
+| `>= 0.5` | 왼쪽 `+1` |
+| `<= -0.5` | 오른쪽 `-1` |
+| 그 사이 | 유지 `0` |
 
----
+예를 들어 차선 정답이 `+1`인데 예측이 `0.4`이면 오차는 줄었더라도 환경은 차선을 유지한다. 따라서 낮은 MSE만으로 차선변경 동작을 판단할 수 없다.
 
-# 25. 이번 단계에서 확인할 것
+## 11. SUMO 평가 연결 상태
 
-- [ ] `collect_pomdp_data.py`로 충분한 episode가 수집되는가?
-- [ ] NPZ/JSONL에 필요한 key가 정상적으로 저장되는가?
-- [ ] Observation shape이 모든 sample에서 동일한가?
-- [ ] `action_raw`이 `[-1, 1]` 범위인가?
-- [ ] `lane_change`가 `{-1, 0, +1}`인가?
-- [ ] Train / Validation이 episode 단위로 분리되는가?
-- [ ] Train loss와 validation loss가 감소하는가?
-- [ ] Lane-change class가 지나치게 불균형하지 않은가?
-- [ ] Best model인 `model.pt`이 정상적으로 저장되는가?
-- [ ] `test.py`에서 BC Policy가 실제 SUMO 환경을 주행하는가?
+현재 `test.py`는 `PPO` 객체를 생성하고 PPO 가중치를 로드한다. `--algorithm` 옵션과 `BCPolicy.load()` 분기가 없으므로, BC 모델을 위치 인자로 넘기는 것만으로는 평가할 수 없다. `train_bc.py`가 출력하는 `--algorithm bc` 평가 명령도 현재는 인자 오류가 발생한다.
 
----
+현재 실행 가능한 다음 명령은 **PPO 모델 평가**이다.
 
-# Next
-
-BC는 수집된 행동을 모방하는 baseline임
-
-다음 단계에서는 같은 SUMO Environment에서 Reward를 이용하여 Policy를 직접 개선하는 Reinforcement Learning을 적용할 수 있음
-
-### 4. Model Training — Reinforcement Learning
-
-```text
-Observation
-    ↓
-Policy
-    ↓
-Action
-    ↓
-SUMO
-    ↓
-Reward
-    ↓
-Policy Update
+```bash
+python test.py results/run_20260907_202220/model.pt --episodes 5 --nogui
 ```
+
+BC 주행 평가를 연결할 때는 다음 순서가 필요하다.
+
+1. `BCPolicy.load(model_path)`로 모델을 복원한다.
+2. `state_dim`, `action_dim`이 환경의 관측·행동 차원과 맞는지 확인한다.
+3. `utils.evaluator.evaluate_policy(policy, env, n_episodes=5, deterministic=True)`에 BC 정책을 전달한다.
+4. 평가 종료 시 `env.close()`를 호출한다.
+
+`BCPolicy.predict()`는 평가기가 요구하는 인터페이스를 갖추고 있다. 평가기의 차선변경 지표 이름은 `lane_changes`인데, 현재 `test.py`의 출력부는 `ep_lane_changes`를 참조하므로 이 부분도 수정해야 한다.
+
+주행 평가에서는 충돌률, 완주율, 속도, 차간거리와 차선변경 횟수를 확인한다. 환경은 현재 `env/` 설정을 사용하며 BC 체크포인트가 수집 당시 환경을 자동 복원하지 않는다. 관측 차원뿐 아니라 항목 순서와 의미도 수집 당시와 일치해야 한다.
+
+## 12. 결과 해석과 오류 점검
+
+| 상황 | 확인할 내용 |
+|---|---|
+| 데이터 로딩 실패 | 파일 경로, NPZ/JSONL 형식, 필수 필드 3개 |
+| raw 행동 범위 오류 | `action_raw` 두 축이 모두 `[-1, 1]`인지 |
+| 에피소드 분리 실패 | 서로 다른 에피소드가 최소 2개 있는지 |
+| 인식하지 못하는 CLI 옵션 | `python train_bc.py --help`에 있는 옵션인지 |
+| 결과 폴더 생성 실패 | `--out-dir`이 이미 존재하는지 |
+| 모델 관측·행동 차원 오류 | 수집·학습·평가의 관측/행동 구성이 같은지 |
+| 이전 모델 로드 실패 | 현재 `BCPolicy.save()`로 저장한 회귀 모델인지. 이전 분류 모델 체크포인트는 구조가 다름 |
+| 검증 MSE만 증가 | 과적합 또는 데이터 분포 차이. 학습률·epoch와 수집 에피소드 다양성 확인 |
+| MSE는 낮지만 차선변경이 적음 | 정답 행동 분포와 raw 예측이 임계값을 넘는지 확인 |
+| 주행 중 성능 저하 | 작은 행동 오차로 수집 데이터에서 드문 관측에 진입할 수 있으므로 실제 주행 평가 확인 |
+
+BC는 수집 정책의 좋은 행동과 잘못된 행동을 함께 모방한다. 보상을 저장하더라도 현재 학습에서는 사용하지 않는다. 차선 유지 데이터가 대부분이거나 같은 관측에 상반된 명령이 많으면, MSE 회귀 결과가 유지에 가까운 평균값으로 모일 수 있다.
+
+## 13. 코드 변경 위치
+
+| 변경할 내용 | 위치 |
+|---|---|
+| 수집 정책·에피소드 수 | `collect_pomdp_data.py --policy ... --episodes ...` |
+| 학습 모델 기반 수집 | 수집기에 모델 로드와 `predict()` 연결 필요 |
+| 학습률·배치 크기·epoch | `train_bc.py --lr`, `--batch-size`, `--epochs` |
+| 검증 비율·seed | `train_bc.py --val-fraction`, `--seed` |
+| CPU/GPU 선택 | `train_bc.py --device` |
+| 정규화 통계 계산 | `train_bc.py`의 모델 생성 직후 |
+| 은닉층 크기·출력 구조 | `algorithms/bc.py`의 `BCPolicy` |
+| 손실 함수 | `train_bc.py`의 `run_epoch()` |
+| 차선 양자화 임계값 | `env/mdp_config.py`의 `ACTION` |
+| 주행 평가 | `test.py`, `utils/evaluator.py` |
+
+## 14. 실습 확인 사항
+
+- [ ] 데이터가 모델 기반 주행인지 랜덤/차선 유지 주행인지 확인했는가?
+- [ ] 기존 데이터에 메타데이터가 있다면 수집 정책을 확인했는가?
+- [ ] 필수 데이터의 shape과 raw 행동 범위가 올바른가?
+- [ ] 학습·검증이 에피소드 단위로 분리되는가?
+- [ ] 정규화 통계가 학습 데이터에서만 계산되는가?
+- [ ] 학습·검증 MSE와 best model 저장을 확인했는가?
+- [ ] BC 평가 연결 후 SUMO에서 충돌·완주·차선변경을 확인했는가?
+
+다음 강화학습 단계에서는 수집 행동을 정답으로 맞추는 대신, 환경과 상호작용하며 보상을 이용해 정책을 개선한다.
