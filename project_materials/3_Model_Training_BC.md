@@ -1,15 +1,11 @@
 # 3. Model Training — Behavior Cloning
 
-> **목표:** 저장한 관측과 행동으로 BC 모델을 학습하고, 모델 저장·복원과 주행 평가에 필요한 연결을 이해한다.
->
-> **현재 파일 상태:** `train_bc.py`는 BC 학습을 지원하지만, 현재 `collect_pomdp_data.py`는 랜덤/차선 유지 수집만 지원하고 `test.py`는 PPO 전용이다. 기존 데이터로 BC 학습은 가능하며 모델 기반 재수집과 BC 주행 평가에는 해당 실행 코드의 연결이 필요하다.
->
-> 현재 구현은 **가감속과 차선변경 raw 값 2개를 모두 MSE로 회귀하는 MLP**이다.
+> **목표:** 저장한 관측과 행동으로 BC 모델을 학습하고, 모델 저장 및 성능 평가 실습
 
 ## 1. 전체 흐름
 
 ```text
-랜덤 또는 차선 유지 정책
+학습된 모델 불러오기
         ↓
 collect_pomdp_data.py: SUMO 주행
         ↓
@@ -26,51 +22,49 @@ BCPolicy.load()로 복원
 BC 평가 연결 후 SUMO 주행 평가
 ```
 
-데이터 수집과 주행 평가에는 SUMO가 필요하다. BC 학습 자체는 NumPy와 PyTorch로 저장된 데이터만 읽으며 SUMO를 실행하지 않는다. 보상을 최대화하는 강화학습이 아니라 수집 정책의 행동을 모방하는 지도학습이다.
+이번 시간 실습은 강화학습이 아닌, 수집 정책의 행동을 모방하는 Imitation Learning임
+
+데이터 수집과 주행 평가에는 SUMO가 필요하지만, BC 학습 자체는 NumPy와 PyTorch로 저장된 데이터만 읽으며 SUMO를 실행하지 않음
 
 | 파일 | 역할 |
 |---|---|
-| `collect_pomdp_data.py` | 랜덤/차선 유지 정책으로 SUMO 주행, transition 저장 |
-| `train_bc.py` | 데이터 검증, 에피소드 분리, 정규화 통계 계산, MSE 학습 |
-| `algorithms/bc.py` | `BCPolicy` 신경망, 추론, 저장·복원 |
-| `test.py` | 현재 PPO 모델의 SUMO 주행 평가 |
+| `collect_pomdp_data.py` | 학습된 모델로 SUMO 주행, transition 저장 |
+| `train_bc.py` | 데이터 검증, 모델 학습 |
+| `algorithms/bc.py` | `BCPolicy` 신경망, 추론, 모델 저장· 모델 불러오기 |
+| `test.py` | 현재 모델의 SUMO 주행 평가 |
 | `env/sumo_env.py` | raw 행동 제한, 차선 명령 양자화, 안전 조건에 따른 실행 |
 
 ## 2. 실행 준비
 
-아래 명령은 프로젝트 최상위 폴더에서 실행한다. 기존 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화한다.
+아래 명령은 프로젝트 최상위 폴더에서 실행한다. 만약 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화한다.
 
 ```bash
 conda activate sumo-rl
 ```
 
-다른 환경을 사용한다면 NumPy와 PyTorch가 설치되어 있어야 한다. 수집·평가에는 프로젝트의 SUMO/TraCI 실행 환경도 필요하다.
-
 ## 3. 데이터 수집과 기존 데이터 선택
 
-현재 수집기의 기본 정책은 `random`이다. 학습된 모델을 읽는 `--model` 옵션은 없다.
+현재 데이터 수집 시 학습된 모델을 읽는 `--model` 옵션을 추가하여 데이터 수집이 가능함.
 
 ```bash
-python collect_pomdp_data.py --episodes 100 --policy random --name bc_demo
+python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --episodes 10
 ```
 
-차선 유지 정책으로 화면을 보며 수집하려면 다음과 같이 실행한다.
+화면을 보며 수집하려면 다음과 같이 옵션 추가
 
 ```bash
-python collect_pomdp_data.py --episodes 10 --policy keep-lane --gui --name bc_demo_gui
+python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --episodes 10 --gui
 ```
 
-랜덤 정책은 가감속을 `[-1, 1]`에서 균등하게 뽑고, 차선 명령을 오른쪽 15%, 유지 70%, 왼쪽 15%로 선택한다. 차선 유지 정책은 `[0.25, 0.0]`을 반환한다. 둘 다 전문가 주행 정책이 아니므로 파이프라인 확인용으로 해석한다.
+랜덤 정책은 가감속을 `[-1, 1]`에서 균등하게 뽑고, 차선 명령을 오른쪽 15%, 유지 70%, 왼쪽 15%로 선택한다. 차선 유지 정책은 `[0.25, 0.0]`을 반환함. 
 
-수집 결과는 `data/bc_demo.npz`와 `data/bc_demo.jsonl`이다. 이름을 생략하면 날짜·시각이 사용된다. 현재 코드는 같은 이름의 파일을 덮어쓸 수 있으므로 재수집 시 새 이름을 사용한다.
+수집 결과는 `data/bc_demo.npz`와 `data/bc_demo.jsonl`임. 이름을 생략하면 날짜·시각이 사용됨. 현재 코드는 같은 이름의 파일을 덮어쓸 수 있으므로 재수집 시 새 이름을 사용함.
 
-이미 모델로 수집한 다음 데이터가 있다면, 현재 수집기를 다시 실행하지 않고 그대로 학습할 수 있다.
+이미 모델로 수집한 다음 데이터가 있다면, 현재 수집기를 다시 실행하지 않고 그대로 학습 진행이 가능함.
 
 ```bash
 python train_bc.py --data data/pomdp_20260922_095037_217175.npz --epochs 50
 ```
-
-이 기존 데이터의 `*.metadata.json`에는 PPO 모델로 수집했다는 정보가 기록되어 있다. 다만 **현재 수집기는 metadata 파일을 생성하지 않으며**, 기존 데이터가 만들어진 당시의 모델 기반 수집 코드와 현재 파일은 다르다. 새로 학습된 차량을 돌려 데이터를 수집하려면 모델 로드와 `policy.predict(obs)` 호출을 수집기에 연결해야 한다.
 
 BC는 저장된 ego 행동을 모방한다. 배경차가 IDM을 사용한다고 해서 ego 행동이 IDM 전문가 행동이 되는 것은 아니다.
 
