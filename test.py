@@ -4,12 +4,14 @@
     python test.py results/run_20260824_153012/model.pt   ← 모델 경로 지정
     python test.py                                        ← 최근 run 자동 선택
     python test.py --episodes 5 --nogui                   ← 화면 없이 지표만 측정
+    python test.py results/bc_example/model.pt --algorithm bc --nogui
 
 빨간 차가 ego. 앞차가 느리면 감속하고 앞이 비면 가속하는지 관찰해보자.
 """
 import argparse
 import glob
 import os
+import torch
 
 from env.road_config import ROAD, EGO, TRAFFIC
 from env.mdp_config import SIMULATION, OBSERVATION, ACTION
@@ -17,6 +19,7 @@ from env import road_builder
 from env.sumo_env import SumoHighwayEnv
 
 from algorithms.ppo import PPO
+from algorithms.bc import BCPolicy
 from utils.evaluator import evaluate_policy
 
 # train.py와 동일한 네트워크 구조로 만들어야 가중치를 불러올 수 있으므로
@@ -32,8 +35,40 @@ def find_latest_model() -> str:
     if not candidates:
         raise FileNotFoundError(
             f"'{RESULTS_DIR}/' 안에 model.pt가 없습니다. "
-            f"먼저 python train.py 로 학습하세요.")
+            f"먼저 train.py 또는 train_bc.py로 학습하세요.")
     return max(candidates, key=os.path.getmtime)
+
+
+def load_agent(model_path, obs_dim, act_dim, algorithm="auto"):
+    """BC 체크포인트와 기존 PPO state_dict를 구분해 평가 정책을 복원한다."""
+    checkpoint = torch.load(model_path, map_location="cpu", weights_only=True)
+    if not isinstance(checkpoint, dict):
+        raise ValueError("지원하지 않는 모델 파일 형식입니다.")
+    if checkpoint.get("algorithm") == "bc":
+        detected = "bc"
+    elif "trunk.0.weight" in checkpoint and "mu_head.weight" in checkpoint:
+        detected = "ppo"
+    else:
+        raise ValueError("현재 BC 체크포인트 또는 PPO state_dict가 아닙니다.")
+    if algorithm != "auto" and algorithm != detected:
+        raise ValueError(f"--algorithm {algorithm}과 모델 유형 {detected}가 다릅니다.")
+
+    if detected == "bc":
+        if not {"state_dim", "action_dim", "state_dict"}.issubset(checkpoint):
+            raise ValueError("현재 BCPolicy 형식이 아닙니다. 현재 train_bc.py로 학습한 모델을 사용하세요.")
+        dims = (checkpoint["state_dim"], checkpoint["action_dim"])
+        if dims != (obs_dim, act_dim):
+            raise ValueError(f"BC 모델 입출력 차원 {dims} != 환경 {(obs_dim, act_dim)}")
+        agent = BCPolicy.load(model_path, device="cpu")
+    else:
+        agent = PPO(obs_dim=obs_dim, act_dim=act_dim, **HPARAMS)
+        try:
+            agent.policy.load_state_dict(checkpoint)
+        except RuntimeError as exc:
+            raise ValueError("PPO 모델과 현재 환경 차원 또는 HPARAMS의 네트워크 구조가 다릅니다.") from exc
+        agent.policy.eval()
+    print(f"평가 알고리즘: {detected.upper()}")
+    return agent
 
 
 if __name__ == "__main__":
@@ -44,7 +79,11 @@ if __name__ == "__main__":
                         help="재생/평가할 에피소드 수")
     parser.add_argument("--nogui", action="store_true",
                         help="화면 없이 주행 지표만 측정 (빠름)")
+    parser.add_argument("--algorithm", choices=["auto", "ppo", "bc"], default="auto",
+                        help="기본은 모델 파일에서 PPO/BC 자동 판별")
     args = parser.parse_args()
+    if args.episodes < 1:
+        parser.error("--episodes는 1 이상이어야 합니다.")
 
     model_path = args.model or find_latest_model()
     if not os.path.isabs(model_path):
@@ -71,22 +110,13 @@ if __name__ == "__main__":
         print("※ 창이 뜨면 ▶(플레이) 버튼을 눌러야 에피소드가 시작됩니다.")
         print("  에피소드가 끝나면 다음 에피소드 창이 다시 뜨고, 또 ▶를 누르면 됩니다.")
 
-    agent = PPO(obs_dim=env.observation_space.shape[0],
-                act_dim=env.action_space.shape[0],
-                **HPARAMS)
     try:
-        agent.load(model_path)
-    except RuntimeError as e:
-        raise RuntimeError(
-            "모델의 action dimension이 현재 환경과 맞지 않습니다. "
-            "차선변경 action 추가 전의 기존 model.pt라면 새 설정으로 "
-            "python train.py를 실행해 다시 학습하세요."
-        ) from e
-
-    # 평가 로직은 utils/evaluator.py 에 있다 (학습 중 평가와 완전히 동일한 코드)
-    metrics = evaluate_policy(agent, env, n_episodes=args.episodes,
-                              deterministic=True)
-    env.close()
+        agent = load_agent(model_path, env.observation_space.shape[0],
+                           env.action_space.shape[0], args.algorithm)
+        metrics = evaluate_policy(agent, env, n_episodes=args.episodes,
+                                  deterministic=True)
+    finally:
+        env.close()
 
     print(f"\n─── 주행 지표 ({args.episodes} 에피소드 평균) ───")
     print(f"  충돌률       : {metrics.collision_rate:.0%}")
@@ -96,6 +126,6 @@ if __name__ == "__main__":
           f"({metrics.mean_speed * 3.6:.1f} km/h)")
     print(f"  평균 차간거리: {metrics.mean_gap:.2f} m")
     print(f"  최소 차간거리: {metrics.min_gap:.2f} m")
-    print(f"  차선변경     : {metrics.ep_lane_changes:.1f} 회/에피소드")
+    print(f"  차선변경     : {metrics.lane_changes:.1f} 회/에피소드")
     print(f"  평균 보상    : {metrics.ep_return:.2f}")
     print(f"  평균 길이    : {metrics.ep_length:.0f} 스텝")
