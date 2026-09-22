@@ -6,7 +6,7 @@
 학습 대상:
     observation -> action_raw
 
-BehaviorCloningModel은 algorithms/bc.py에 정의된
+BCPolicy는 algorithms/bc.py에 정의된
 state_dim -> 256 -> 256 -> action_dim MLP를 사용하며,
 전체 action vector에 대해 MSE loss로 학습함.
 """
@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from algorithms.bc import BehaviorCloningModel
+from algorithms.bc import BCPolicy
 
 
 BASE = Path(__file__).resolve().parent
@@ -77,17 +77,17 @@ def load_data(path):
     if n == 0:
         raise ValueError("데이터가 비어 있습니다.")
 
-    if obs.ndim != 2:
+    if obs.ndim != 2 or obs.shape[1] == 0:
         raise ValueError(
             f"observation shape은 (N, state_dim)이어야 합니다. 현재 shape={obs.shape}"
         )
 
-    if actions.ndim != 2:
+    if actions.ndim != 2 or actions.shape[1] != 2:
         raise ValueError(
-            f"action_raw shape은 (N, action_dim)이어야 합니다. 현재 shape={actions.shape}"
+            f"action_raw shape은 (N, 2)이어야 합니다. 현재 shape={actions.shape}"
         )
 
-    if len(actions) != n or len(episodes) != n:
+    if len(actions) != n or episodes.shape != (n,):
         raise ValueError(
             "observation, action_raw, episode의 sample 수가 서로 다릅니다."
         )
@@ -97,6 +97,13 @@ def load_data(path):
 
     if not np.isfinite(actions).all():
         raise ValueError("action_raw에 NaN 또는 Inf가 있습니다.")
+
+    if not np.issubdtype(episodes.dtype, np.number) or not np.isfinite(episodes).all():
+        raise ValueError("episode은 유한한 숫자 ID여야 합니다.")
+    if not np.equal(episodes, np.floor(episodes)).all():
+        raise ValueError("episode ID는 정수여야 합니다.")
+    if (np.abs(actions) > 1).any():
+        raise ValueError("action_raw는 환경에 전달된 [-1, 1] 범위의 행동이어야 합니다.")
 
     return obs, actions, episodes
 
@@ -177,13 +184,8 @@ def run_epoch(model, loader, device, optimizer=None):
 
 
 def save_model(model, path):
-    """BehaviorCloningModel의 state_dict를 저장함.
-
-    algorithms/bc.py의 load_actor()에서 바로
-    self.BC_net.load_state_dict(torch.load(...)) 형태로 불러올 수 있도록
-    raw state_dict만 저장함.
-    """
-    torch.save(model.state_dict(), path)
+    """BCPolicy.load()와 호환되도록 구조 정보와 정규화 통계도 저장한다."""
+    model.save(path)
 
 
 def main():
@@ -276,10 +278,18 @@ def main():
     )
 
     # Model
-    model = BehaviorCloningModel(
+    model = BCPolicy(
         state_dim=state_dim,
         action_dim=action_dim,
     ).to(device)
+
+    # 검증 데이터가 통계에 섞이지 않도록 학습 관측만으로 정규화한다.
+    # 상수 항목은 표준편차를 1로 두어 검증/추론 입력의 폭증을 방지한다.
+    obs_mean = obs[train_idx].mean(axis=0)
+    obs_std = obs[train_idx].std(axis=0)
+    obs_std = np.where(obs_std < 1e-6, 1.0, obs_std)
+    model.obs_mean.copy_(torch.as_tensor(obs_mean, device=device))
+    model.obs_std.copy_(torch.as_tensor(obs_std, device=device))
 
     optimizer = torch.optim.Adam(
         model.parameters(),
@@ -288,7 +298,7 @@ def main():
 
     # 결과 폴더
     if args.out_dir is None:
-        timestamp = datetime.now().strftime("bc_%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("bc_%Y%m%d_%H%M%S_%f")
         out_dir = BASE / "results" / timestamp
     else:
         out_dir = args.out_dir
@@ -379,7 +389,7 @@ def main():
                 best_val_loss = val_loss
                 save_model(
                     model,
-                    out_dir / "model_BC",
+                    out_dir / "model.pt",
                 )
 
             print(
@@ -391,15 +401,16 @@ def main():
     # 마지막 epoch 모델 저장
     save_model(
         model,
-        out_dir / "last_model_BC",
+        out_dir / "last_model.pt",
     )
 
     print("=" * 70)
     print("Training finished")
     print(f"Best validation loss : {best_val_loss:.6f}")
-    print(f"Best model           : {out_dir / 'model_BC'}")
-    print(f"Last model           : {out_dir / 'last_model_BC'}")
+    print(f"Best model           : {out_dir / 'model.pt'}")
+    print(f"Last model           : {out_dir / 'last_model.pt'}")
     print(f"Training log         : {log_path}")
+    print(f"Evaluation           : python test.py {out_dir / 'model.pt'} --algorithm bc --nogui")
     print("=" * 70)
 
 
