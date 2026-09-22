@@ -118,33 +118,7 @@ action_raw = [accel_raw, lane_change_raw]
 - 에피소드 ID가 유한한 정수 값인지
 - 두 raw 행동 값이 모두 `[-1, 1]` 범위인지
 
-## 5. 학습·검증 분리와 정규화
-
-`split_episodes()`는 에피소드 ID를 seed에 따라 섞은 뒤 검증 에피소드를 선택함. 같은 에피소드의 transition이 학습과 검증에 함께 들어가지 않는다.
-
-기본 `--val-fraction 0.2`에서 100개 에피소드는 학습 80개, 검증 20개로 나뉨. 에피소드 길이는 서로 다르므로 transition 수가 정확히 80:20이 되는 것은 아니며, 최소 2개 에피소드가 필요함.
-
-정규화 통계는 학습 관측에서만 계산한다.
-
-```python
-obs_mean = obs[train_idx].mean(axis=0)
-obs_std = obs[train_idx].std(axis=0)
-obs_std = np.where(obs_std < 1e-6, 1.0, obs_std)
-model.obs_mean.copy_(torch.as_tensor(obs_mean, device=device))
-model.obs_std.copy_(torch.as_tensor(obs_std, device=device))
-```
-
-학습에서 값이 일정한 항목은 표준편차를 1로 둔다. 매우 작은 값으로 나누어 검증·추론 입력이 폭증하는 것을 방지하기 위한 처리이다.
-
-모델 내부에서는 다음 계산을 수행한다.
-
-```python
-state = (state - self.obs_mean) / self.obs_std
-```
-
-평균과 표준편차는 `register_buffer()`로 등록되어 가중치와 함께 저장된다. 검증과 주행 추론에서도 동일한 통계를 사용한다.
-
-## 6. BCPolicy 구조
+## 5. BCPolicy 구조
 
 ```text
 부분관측 (state_dim)
@@ -160,7 +134,7 @@ Linear(256, 2)
 [accel_raw, lane_change_raw]
 ```
 
-현재 `algorithms/bc.py`의 구현은 다음과 같다.
+현재 `algorithms/bc.py`의 구현은 다음과 같음.
 
 ```python
 self.fc1 = nn.Linear(state_dim, 256)
@@ -176,22 +150,18 @@ def forward(self, state):
     return self.fc3(x)
 ```
 
-가감속과 차선변경을 하나의 출력층에서 모두 회귀한다. 별도의 lane classification head, logits, argmax 변환은 없다. 출력층에는 tanh나 clipping이 없으므로 모델 출력 자체가 `[-1, 1]`에 제한되지는 않는다.
-
-단일 시점의 관측만 사용하며, 과거 관측을 기억하는 RNN이나 belief 추정 구조는 없다. POMDP 환경에서 사용하는 feed-forward BC baseline이다.
+단일 시점의 관측만 사용하며, 과거 관측을 기억하는 RNN이나 belief 추정 구조는 없음. POMDP 환경에서 사용하는 feed-forward BC baseline임
 
 ## 7. 손실과 학습 과정
 
-두 행동 값 전체에 MSE를 적용한다.
+두 행동 값 전체에 MSE를 적용함.
 
 ```python
 pred_action = model(state)
 loss = F.mse_loss(pred_action, target_action)
 ```
 
-배치 크기가 `B`이면 손실은 `B × 2`개 원소의 제곱오차 평균이다. 가감속과 차선변경에 동일한 가중치를 사용한다. Cross Entropy나 별도의 차선 손실 가중치는 없다.
-
-학습 배치에서는 다음을 실행한다.
+학습 배치에서는 다음을 실행함.
 
 ```python
 optimizer.zero_grad()
@@ -199,11 +169,9 @@ loss.backward()
 optimizer.step()
 ```
 
-최적화기는 Adam이며 현재 학습 코드에는 gradient clipping이 없다. 검증에서는 gradient 계산과 가중치 갱신을 하지 않는다. 에피소드 분리 후 학습 DataLoader는 sample을 섞고 검증 DataLoader는 섞지 않는다.
-
 ## 8. 학습 실행과 옵션
 
-앞에서 생성한 데이터로 학습한다.
+앞에서 생성한 데이터로 학습함.
 
 ```bash
 python train_bc.py --data data/bc_demo.npz --epochs 50
@@ -215,7 +183,7 @@ python train_bc.py --data data/bc_demo.npz --epochs 50
 python train_bc.py --data data/bc_demo.jsonl --epochs 50
 ```
 
-수집이 끝난 파일을 지정한다. 이미 데이터가 있다면 재수집 없이 `--data`에 그 파일 경로를 넣는다.
+이미 데이터가 있다면 `--data` 옵션에 그 파일 경로를 넣는다.
 
 | 옵션 | 기본값 | 의미 |
 |---|---|---|
@@ -228,25 +196,25 @@ python train_bc.py --data data/bc_demo.jsonl --epochs 50
 | `--device` | `auto` | `auto`, `cpu`, `cuda`, `mps` |
 | `--out-dir` | 자동 생성 | 새 결과 폴더 경로 |
 
-은닉층 크기는 `algorithms/bc.py`에 `256 → 256`으로 고정되어 있다. `--hidden-sizes`와 `--lane-weight` 옵션은 현재 지원하지 않는다.
+은닉층 크기는 `algorithms/bc.py`에 `256 → 256`으로 고정되어 있음. `--hidden-sizes`와 `--lane-weight` 옵션은 현재 지원하지 않는다.
 
-`auto`는 **CUDA → MPS → CPU** 순서로 사용 가능한 장치를 선택한다. Apple Silicon의 MPS도 지원 여부에 따라 자동 선택된다. CPU를 지정하려면 다음과 같이 실행한다.
+`auto`는 **CUDA → MPS → CPU** 순서로 사용 가능한 장치를 선택하게 되며, Apple Silicon의 MPS도 지원 여부에 따라 자동 선택됨. CPU를 지정하려면 다음과 같이 실행하면 됨.
 
 ```bash
 python train_bc.py --data data/bc_demo.npz --epochs 50 --batch-size 256 --lr 3e-4 --device cpu --out-dir results/bc_demo
 ```
 
-이후 평가 예시는 위 명령의 `results/bc_demo`를 기준으로 한다. 결과 폴더는 새로 생성하며 이미 존재하면 중단한다. 재실행할 때는 다른 `--out-dir`을 지정하거나 생략해 자동 이름을 사용한다.
+이후 평가 예시는 위 명령의 `results/bc_demo`를 기준으로 함. 결과 폴더는 새로 생성하며 이미 존재하면 중단한다. 재실행할 때는 다른 `--out-dir`을 지정하거나 생략해 자동 이름을 사용함.
 
 ## 9. 로그와 저장 결과
 
-학습 중 출력 형식은 다음과 같다. 숫자는 실행마다 달라진다.
+학습 중 출력 형식은 다음과 같으며, 숫자는 실행마다 달라짐.
 
 ```text
 Epoch   1/50 | train_loss=0.149120 | val_loss=0.067159
 ```
 
-두 값 모두 전체 행동 벡터의 MSE이다. 현재는 별도의 가감속 MSE, lane CE, lane accuracy를 출력하지 않는다.
+두 값 모두 전체 행동 벡터의 MSE임. 현재는 별도의 가감속 MSE, lane CE, lane accuracy를 출력하지 않음.
 
 ```text
 results/bc_demo/
@@ -263,45 +231,13 @@ results/bc_demo/
 | `model.pt` | 검증 MSE가 가장 낮았던 모델 |
 | `last_model.pt` | 마지막 epoch 모델 |
 
-`--out-dir`을 생략하면 `results/bc_YYYYMMDD_HHMMSS_microsecond/` 형태로 생성한다.
+`--out-dir`을 생략하면 `results/bc_YYYYMMDD_HHMMSS_microsecond/` 형태로 생성
 
-`model.pt`는 raw state_dict만 담는 파일이 아니다. `BCPolicy.save()`는 `algorithm`, `state_dim`, `action_dim`, `state_dict`를 저장한다. 정규화 통계도 state_dict에 포함된다. optimizer 상태와 학습 재개 옵션은 제공하지 않는다.
+학습 종료 시 `Best model`, `Last model`, `Training log`, `Evaluation` 항목이 출력됨. 
 
-학습 종료 시 `Best model`, `Last model`, `Training log`, `Evaluation` 항목이 출력된다. 기본적으로 평가에는 `model.pt`를 사용한다. 단, 출력되는 `Evaluation` 명령의 `--algorithm bc`는 현재 `test.py`에서 지원하지 않으므로 그대로 실행할 수 없다.
+기본적으로 평가에는 `model.pt`를 사용
 
-## 10. 모델 복원과 행동 생성
-
-```python
-from algorithms.bc import BCPolicy
-
-policy = BCPolicy.load("results/bc_demo/model.pt", device="cpu")
-# obs는 환경에서 받은 단일 관측으로 shape이 (policy.state_dim,)이어야 한다.
-# action = policy.predict(obs)
-```
-
-`predict()`는 단일 관측을 float32 텐서로 바꾸고 모델과 같은 장치로 옮긴 뒤, 정규화와 신경망 계산을 수행한다. 결과는 길이 2의 NumPy 배열이다. `deterministic` 인자는 평가 인터페이스 호환용이며, 현재 BC는 False여도 확률적으로 샘플링하지 않는다.
-
-```text
-관측 → 정규화 → MLP → raw 행동 2개
-        ↓
-환경에서 [-1, 1]로 제한
-        ↓
-차선 raw 값을 {-1, 0, +1} 명령으로 양자화
-        ↓
-차선 범위·안전 조건에 따라 실행
-```
-
-현재 `ACTION["lane_change_threshold"]`는 `0.5`이다.
-
-| 차선 raw 값 | 요청 명령 |
-|---|---|
-| `>= 0.5` | 왼쪽 `+1` |
-| `<= -0.5` | 오른쪽 `-1` |
-| 그 사이 | 유지 `0` |
-
-예를 들어 차선 정답이 `+1`인데 예측이 `0.4`이면 오차는 줄었더라도 환경은 차선을 유지한다. 따라서 낮은 MSE만으로 차선변경 동작을 판단할 수 없다.
-
-## 11. SUMO 평가 연결 상태
+## 10. SUMO 평가 연결 상태
 
 현재 `test.py`는 `PPO` 객체를 생성하고 PPO 가중치를 로드한다. `--algorithm` 옵션과 `BCPolicy.load()` 분기가 없으므로, BC 모델을 위치 인자로 넘기는 것만으로는 평가할 수 없다. `train_bc.py`가 출력하는 `--algorithm bc` 평가 명령도 현재는 인자 오류가 발생한다.
 
