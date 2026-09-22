@@ -221,7 +221,9 @@ results/bc_demo/
 ├── config.json
 ├── training_log.csv
 ├── model.pt
-└── last_model.pt
+├── last_model.pt
+└── tensorboard/
+    └── events.out.tfevents.*
 ```
 
 | 파일 | 내용 |
@@ -230,12 +232,57 @@ results/bc_demo/
 | `training_log.csv` | `epoch`, `train_loss`, `val_loss` |
 | `model.pt` | 검증 MSE가 가장 낮았던 모델 |
 | `last_model.pt` | 마지막 epoch 모델 |
+| `tensorboard/` | TensorBoard 이벤트 로그 |
 
-`--out-dir`을 생략하면 `results/bc_YYYYMMDD_HHMMSS_microsecond/` 형태로 생성
+`--out-dir`을 생략하면 `results/bc_YYYYMMDD_HHMMSS/` 형태로 생성함.
+예를 들어 `results/bc_20260922_143025/model.pt`처럼 날짜와 시각(초)까지만 표시하며,
+뒤에 마이크로초 숫자는 붙이지 않음. 모델 파일명은 `model.pt`로 유지됨.
+같은 초에 시작하여 결과 폴더 이름이 겹치면 기존 결과를 덮어쓰지 않고 중단하므로,
+잠시 후 다시 실행하거나 새로운 `--out-dir`을 지정하면 됨.
 
 학습 종료 시 `Best model`, `Last model`, `Training log`, `Evaluation` 항목이 출력됨. 
 
 기본적으로 평가에는 `model.pt`를 사용
+
+### 9.1 TensorBoard에서 학습 곡선 보기
+
+현재 `train_bc.py`는 매 epoch의 결과를 `결과 폴더/tensorboard/`에 자동 기록함.
+학습을 실행한 상태에서 다른 터미널을 열고, 프로젝트 최상위 폴더에서 다음 명령을 실행함.
+
+```bash
+conda activate sumo-rl
+tensorboard --logdir results
+```
+
+브라우저에서 **http://localhost:6006**으로 접속하고 Scalars 화면에서 확인함.
+여러 학습 결과를 비교하려면 표시할 run을 선택하면 됨.
+
+| 항목 | 의미 |
+|---|---|
+| `Loss/train` | 해당 epoch의 학습 MSE |
+| `Loss/validation` | 해당 epoch의 검증 MSE |
+| `Loss/best_validation` | 해당 epoch까지의 최저 검증 MSE |
+| `Optimization/learning_rate` | Adam 학습률 |
+
+x축은 epoch이며, 학습·검증 loss는 CSV에 기록된 값과 동일함.
+학습 설정은 Text 화면의 `config` 항목에 기록됨.
+현재 학습률 스케줄러가 없으므로 학습률은 지정한 `--lr` 값으로 일정함.
+
+특정 실험만 보려면 해당 폴더를 지정함.
+
+```bash
+tensorboard --logdir results/bc_demo/tensorboard
+```
+
+TensorBoard가 설치되어 있지 않으면 학습에 사용하는 Python 환경에서 설치함.
+
+```bash
+python -m pip install tensorboard
+```
+
+로그는 매 epoch마다 디스크에 반영하며, 정상 종료 또는 Ctrl+C·예외 발생 시 writer를 닫음.
+TensorBoard 기록 기능을 추가한 이후 새로 실행한 학습부터 확인할 수 있고,
+기존 CSV만 있는 과거 결과가 자동으로 TensorBoard 로그로 변환되지는 않음.
 
 ## 10. `test.py`로 BC 모델 주행 평가
 
