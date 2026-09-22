@@ -56,7 +56,7 @@ python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --epis
 python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --episodes 10 --gui
 ```
 
-랜덤 정책은 가감속을 `[-1, 1]`에서 균등하게 뽑고, 차선 명령을 오른쪽 15%, 유지 70%, 왼쪽 15%로 선택한다. 차선 유지 정책은 `[0.25, 0.0]`을 반환함. 
+랜덤 정책은 가감속을 `[-1, 1]`에서 균등하게 뽑고, 차선 명령을 오른쪽 15%, 유지 70%, 왼쪽 15%로 선택하고, 차선 유지 정책은 `[0.25, 0.0]`을 반환함. 
 
 수집 결과는 `data/bc_demo.npz`와 `data/bc_demo.jsonl`임. 이름을 생략하면 날짜·시각이 사용됨. 현재 코드는 같은 이름의 파일을 덮어쓸 수 있으므로 재수집 시 새 이름을 사용함.
 
@@ -66,11 +66,11 @@ python collect_pomdp_data.py --model results/run_20260907_202220/model.pt --epis
 python train_bc.py --data data/pomdp_20260922_095037_217175.npz --epochs 50
 ```
 
-BC는 저장된 ego 행동을 모방한다. 배경차가 IDM을 사용한다고 해서 ego 행동이 IDM 전문가 행동이 되는 것은 아니다.
+BC는 저장된 ego 행동을 모방하며, 주변 차량을 IDM으로 사용한다고 해서 ego 행동이 IDM 전문가 행동이 되는 것이 아님. 우리가 수집한 데이터는 기존에 학습되어 있는 자율주행 차량의 주행 데이터이기 때문.
 
 ## 4. BC 학습에 사용하는 데이터
 
-NPZ와 JSONL 모두 다음 세 필드만 사용한다.
+NPZ와 JSONL 모두 다음 세 필드만 사용함.
 
 | 필드 | 배열 형태 | 용도 |
 |---|---|---|
@@ -78,9 +78,13 @@ NPZ와 JSONL 모두 다음 세 필드만 사용한다.
 | `action_raw` | `(N, 2)` | 정답 가감속·차선변경 raw 값 |
 | `episode` | `(N,)` | 학습·검증 분리용 에피소드 ID |
 
-`N`은 전체 transition 수이다. `state_dim`은 데이터에서 읽으며, 현재 환경의 관측은 31차원이다. 코드의 `state`는 SUMO 전체 내부 상태가 아니라 에이전트가 받는 부분관측을 의미한다.
+`N`은 전체 transition 수 
 
-NPZ에서는 다음과 같이 읽는다.
+`state_dim`은 데이터에서 읽으며, 현재 환경의 관측은 31차원임
+
+코드의 `state`는 SUMO 전체 내부 상태가 아니라 에이전트가 받는 부분관측을 의미함.
+
+NPZ에서는 다음과 같이 읽음
 
 ```python
 with np.load(path, allow_pickle=False) as data:
@@ -89,7 +93,9 @@ with np.load(path, allow_pickle=False) as data:
     episodes = data["episode"]
 ```
 
-JSONL에서는 각 줄의 동일한 필드를 읽는다. `lane_change`, reward, next observation, privileged state, 감지 차량 좌표는 현재 BC 학습에 사용하지 않는다. 따라서 NPZ의 object 배열인 `detected_xy`를 읽기 위해 pickle을 허용할 필요도 없다.
+JSONL에서는 각 줄의 동일한 필드를 읽음
+
+`lane_change`, reward, next observation, privileged state, 감지 차량 좌표는 현재 BC 학습에 사용하지 않음. 
 
 ### 행동 값의 의미
 
@@ -97,13 +103,13 @@ JSONL에서는 각 줄의 동일한 필드를 읽는다. `lane_change`, reward, 
 action_raw = [accel_raw, lane_change_raw]
 ```
 
-가감속 raw 값은 물리 단위의 가속도 자체가 아니라 환경에 전달하는 제어 입력이다. 학습 정답은 두 축 모두 `[-1, 1]` 범위이다.
+가감속 raw 값은 물리 단위의 가속도 자체가 아니라 환경에 전달하는 제어 입력으로, 학습 정답은 두 축 모두 `[-1, 1]` 범위임.
 
-현재 수집기는 생성한 정책 행동을 환경에 전달하고 그 값을 `action_raw`로 저장한다. 별도의 `lane_change` 필드는 양자화된 요청 명령이며, 실제 차선변경 성공 여부와는 다르다. JSONL의 `action.lane_change_applied`로 실행 여부를 확인할 수 있다.
+현재 수집기는 생성한 정책 행동을 환경에 전달하고 그 값을 `action_raw`로 저장함. 별도의 `lane_change` 필드는 양자화된 명령이며, 실제 차선 변경 성공 여부와는 다름. JSONL의 `action.lane_change_applied`로 실행 여부를 확인할 수 있음.
 
 ### 학습 전 검증
 
-`load_data()`는 다음 조건을 확인한다.
+`load_data()`는 다음 조건을 확인함.
 
 - 데이터가 비어 있지 않고 관측이 `(N, state_dim)` 형태인지
 - 행동이 `(N, 2)`, 에피소드 ID가 `(N,)`인지
@@ -112,13 +118,11 @@ action_raw = [accel_raw, lane_change_raw]
 - 에피소드 ID가 유한한 정수 값인지
 - 두 raw 행동 값이 모두 `[-1, 1]` 범위인지
 
-차선 raw 값은 연속값이므로 반드시 `-1`, `0`, `+1` 중 하나일 필요는 없다. 현재 코드에는 차선 class index 변환이 없다.
-
 ## 5. 학습·검증 분리와 정규화
 
-`split_episodes()`는 에피소드 ID를 seed에 따라 섞은 뒤 검증 에피소드를 선택한다. 같은 에피소드의 transition이 학습과 검증에 함께 들어가지 않는다.
+`split_episodes()`는 에피소드 ID를 seed에 따라 섞은 뒤 검증 에피소드를 선택함. 같은 에피소드의 transition이 학습과 검증에 함께 들어가지 않는다.
 
-기본 `--val-fraction 0.2`에서 100개 에피소드는 학습 80개, 검증 20개로 나뉜다. 에피소드 길이는 서로 다르므로 transition 수가 정확히 80:20이 되는 것은 아니다. 최소 2개 에피소드가 필요하다.
+기본 `--val-fraction 0.2`에서 100개 에피소드는 학습 80개, 검증 20개로 나뉨. 에피소드 길이는 서로 다르므로 transition 수가 정확히 80:20이 되는 것은 아니며, 최소 2개 에피소드가 필요함.
 
 정규화 통계는 학습 관측에서만 계산한다.
 
