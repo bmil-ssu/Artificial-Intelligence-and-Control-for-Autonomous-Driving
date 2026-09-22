@@ -39,6 +39,7 @@ BC 평가 연결 후 SUMO 주행 평가
 아래 명령은 프로젝트 최상위 폴더에서 실행한다. 만약 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화한다.
 
 ```bash
+source ~/miniforge3/etc/profile.d/conda.sh
 conda activate sumo-rl
 ```
 
