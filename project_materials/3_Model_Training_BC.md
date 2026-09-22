@@ -255,7 +255,7 @@ conda activate sumo-rl
 tensorboard --logdir results
 ```
 
-브라우저에서 **http://localhost:6006**으로 접속하고 Scalars 화면에서 확인함.
+브라우저에서 **http://localhost:6006** 으로 접속하고 Scalars 화면에서 확인함.
 여러 학습 결과를 비교하려면 표시할 run을 선택하면 됨.
 
 | 항목 | 의미 |
