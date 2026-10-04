@@ -36,6 +36,9 @@ Policy Update
 **Reinforcement Learning (RL)** 은 Agent가 Environment와 반복적으로 상호작용하면서  
 높은 Reward를 받을 수 있는 행동을 학습하는 방법
 
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/20ee7627-1db5-4a69-aa05-d701c8b19f93" />
+
+
 | RL 구성 요소 | 프로젝트에서의 의미 |
 |---|---|
 | **Agent** | 자율주행 차량 (AV) |
@@ -64,6 +67,9 @@ SUMO에서 실제로 움직인 뒤
 ---
 
 # 3. Behavior Cloning과 무엇이 다른가?
+
+<img width="700" alt="image" src="https://github.com/user-attachments/assets/fb3a6336-9798-428e-b63f-fb614328402f" />
+
 
 Behavior Cloning은 Dataset에 있는 Action을 따라 하도록 학습함.
 
@@ -257,6 +263,8 @@ RL 알고리즘의 학습 규칙에 따라 Policy가 업데이트됨.
 
 # 9. Exploration이 필요한 이유
 
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/ad2b558c-e986-4103-8654-ae3a1286c314" />
+
 BC는 Expert Action을 그대로 학습하지만, RL은 Agent가 직접 행동을 시도해야 함.
 
 초기 Policy는 아직 학습되지 않았기 때문에 다양한 Action을 시도하면서
@@ -288,6 +296,9 @@ Exploration
 ---
 
 # 10. Replay Buffer
+
+<img width="700" alt="image" src="https://github.com/user-attachments/assets/5d548eea-3e65-4b00-b057-52ebbad1dcad" />
+
 
 DDPG, TD3, SAC와 같은 **Off-policy RL**에서는 학습 중 생성된 Transition을 Replay Buffer에 저장할 수 있음.
 
