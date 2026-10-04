@@ -61,6 +61,17 @@ tensorboard --logdir results
 ```
 브라우저에서 http://localhost:6006 으로 접속하고 Scalars 화면에서 확인
 
+| 옵션 | 의미 |
+|---|---|
+|`train/policy_loss`| PPO 정책 loss|
+|`train/value_loss`| critic loss|
+|`train/ep_rew_mean`| 최근 20개 학습 에피소드의 평균 reward|
+|`episode/return`| 개별 학습 에피소드의 누적 reward|
+|`eval/ep_return`| 평가 주행의 평균 reward|
+|`eval/collision_rate, eval/success_rate`| 충돌률과 완주율|
+|`train/entropy, train/approx_kl, train/clip_frac`| PPO 학습 상태 진단값|
+
+
 ---
 
 # 2. Reinforcement Learning이란?
