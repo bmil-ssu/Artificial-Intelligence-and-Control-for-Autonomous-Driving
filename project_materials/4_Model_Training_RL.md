@@ -29,6 +29,38 @@ Policy Update
 반복
 ```
 
+## 1-1. 폴더 준비
+기존 폴더 삭제 후 
+```bash
+git clone https://github.com/bmil-ssu/Artificial-Intelligence-and-Control-for-Autonomous-Driving.git
+```
+
+## 1-2. (Mac 사용 시) 가상환경 활성화
+아래 명령은 프로젝트 최상위 폴더에서 실행. 만약 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화해야 함.
+
+```bash
+source ~/miniforge3/etc/profile.d/conda.sh  # Miniforge가 이 경로에 설치된 경우
+conda activate sumo-rl
+```
+
+## 1-3. 기본 모델 학습 실행
+```bash
+cd Artificial-Intelligence-and-Control-for-Autonomous-Driving
+ls #폴더 내 파일 목록 확인
+python train.py
+```
+<img width="400"  alt="image" src="https://github.com/user-attachments/assets/6331be7b-8590-4729-b74c-2edff8be8b6e" />
+
+## 1-4. TensorBoard에서 학습 곡선 보기
+학습을 실행한 상태에서 다른 터미널을 열고, 프로젝트 최상위 폴더에서 다음 명령을 실행함.
+```bash
+source ~/miniforge3/etc/profile.d/conda.sh  # Miniforge가 이 경로에 설치된 경우
+conda activate sumo-rl
+
+tensorboard --logdir results
+```
+브라우저에서 http://localhost:6006 으로 접속하고 Scalars 화면에서 확인
+
 ---
 
 # 2. Reinforcement Learning이란?
