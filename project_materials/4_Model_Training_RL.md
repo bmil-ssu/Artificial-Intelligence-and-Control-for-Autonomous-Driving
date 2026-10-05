@@ -1,503 +1,395 @@
 # 4. Model Training — Reinforcement Learning
 
-> **목표:** SUMO 환경과 직접 상호작용하면서 Reward를 이용해  
-> 자율주행 차량(AV)의 의사결정 Policy 학습
+> **목표:** `train.py`로 SUMO 주행 경험을 수집하고, `algorithms/ppo.py`의 PPO로 모델을 학습한 뒤 저장·평가 실습
 
----
+## 1. 전체 흐름과 파일 위치
 
-# 1. 이번 단계에서 무엇을 하나요?
-
-지난 수업에서는 IDM 차량의 주행 데이터를 이용하여 **Behavior Cloning (BC)** 모델을 학습했음.
-
-이번에는 미리 수집된 Action을 따라 하는 것이 아니라,
-
-> **AV가 SUMO 환경에서 직접 행동하고, 그 결과로 받은 Reward를 이용해 Policy를 학습.**
+BC는 저장된 관측과 정답 행동을 비교하지만, 이번 단계에서는 차량이 SUMO에서 직접 행동하고 받은 reward로 모델을 업데이트함. 별도의 NPZ 데이터 파일을 준비하지 않아도 됨.
 
 ```text
-Observation
-    ↓
-Policy
-    ↓
-Action
-    ↓
-SUMO
-    ↓
-Reward + Next Observation
-    ↓
-Policy Update
-    ↓
-반복
+train.py: 학습 설정 및 실행
+        ↓
+env/road_builder.py: SUMO 도로 생성
+        ↓
+env/sumo_env.py: 관측 → 행동 적용 → reward 반환
+        ↓
+algorithms/ppo.py: 경험 수집 및 모델 업데이트
+        ↓
+results/run_날짜_시각/: 모델·로그·설정 저장
+        ↓
+test.py: 저장한 모델로 주행 평가
 ```
 
-## 1-1. 폴더 준비
-기존 폴더 삭제 후 
+| 파일 경로 | 역할 |
+|---|---|
+| `train.py` | 학습 설정, 환경·에이전트 생성, 학습 실행 및 저장 |
+| `algorithms/ppo.py` | `PPO` 클래스: 행동 선택, 경험 수집, loss 계산, 모델 업데이트 |
+| `utils/networks.py` | 정책 및 가치 신경망인 `HybridActorCritic` |
+| `utils/buffer.py` | `RolloutBuffer`: 이번 업데이트에 사용할 주행 기록 관리 |
+| `env/sumo_env.py` | SUMO 연결, `reset()`, `step()`, 관측·보상 계산 |
+| `env/road_config.py` | `ROAD`, `EGO`, `TRAFFIC`: 도로·차량·교통 설정 |
+| `env/mdp_config.py` | 관측·행동·시뮬레이션·기본 reward 설정 |
+| `utils/logger.py` | `RunLogger`: 콘솔·CSV·TensorBoard 기록 |
+| `utils/evaluator.py` | `evaluate_policy()`: 여러 에피소드의 주행 성능 측정 |
+| `test.py` | 저장한 PPO/BC 모델로 주행 평가 |
+
+## 2. 실행 준비와 학습 시작
+
+프로젝트를 새로 내려받는 경우 다음 명령을 실행함.
+
 ```bash
 git clone https://github.com/bmil-ssu/Artificial-Intelligence-and-Control-for-Autonomous-Driving.git
+cd Artificial-Intelligence-and-Control-for-Autonomous-Driving
 ```
 
-## 1-2. (Mac 사용 시) 가상환경 활성화
-아래 명령은 프로젝트 최상위 폴더에서 실행. 만약 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화해야 함.
+Mac에서 `sumo-rl` Conda 환경을 사용하는 경우 먼저 활성화함.
 
 ```bash
-source ~/miniforge3/etc/profile.d/conda.sh  # Miniforge가 이 경로에 설치된 경우
+source ~/miniforge3/etc/profile.d/conda.sh
 conda activate sumo-rl
 ```
 
-## 1-3. 기본 모델 학습 실행
+프로젝트 최상위 폴더에서 실행함.
+
 ```bash
-cd Artificial-Intelligence-and-Control-for-Autonomous-Driving
-ls #폴더 내 파일 목록 확인
 python train.py
 ```
-<img width="400"  alt="image" src="https://github.com/user-attachments/assets/6331be7b-8590-4729-b74c-2edff8be8b6e" />
 
-## 1-4. TensorBoard에서 학습 곡선 보기
-학습을 실행한 상태에서 다른 터미널을 열고, 프로젝트 최상위 폴더에서 다음 명령을 실행함.
-```bash
-source ~/miniforge3/etc/profile.d/conda.sh  # Miniforge가 이 경로에 설치된 경우
-conda activate sumo-rl
+<img width="400" alt="학습 실행 화면" src="https://github.com/user-attachments/assets/6331be7b-8590-4729-b74c-2edff8be8b6e" />
 
-tensorboard --logdir results
-```
-브라우저에서 http://localhost:6006 으로 접속하고 Scalars 화면에서 확인
+현재 학습 환경은 `gui=False`이므로 SUMO 창이 뜨지 않음. 주행 화면은 학습 후 `test.py`로 확인함.
 
-| 옵션 | 의미 |
-|---|---|
-|`train/policy_loss`| PPO 정책 loss|
-|`train/value_loss`| critic loss|
-|`train/ep_rew_mean`| 최근 20개 학습 에피소드의 평균 reward|
-|`episode/return`| 개별 학습 에피소드의 누적 reward|
-|`eval/ep_return`| 평가 주행의 평균 reward|
-|`eval/collision_rate, eval/success_rate`| 충돌률과 완주율|
-|`train/entropy, train/approx_kl, train/clip_frac`| PPO 학습 상태 진단값|
+## 3. train.py에서 학습 설정 변경하기
 
-
----
-
-# 2. Reinforcement Learning이란?
-
-**Reinforcement Learning (RL)** 은 Agent가 Environment와 반복적으로 상호작용하면서  
-높은 Reward를 받을 수 있는 행동을 학습하는 방법
-
-<img width="600" alt="image" src="https://github.com/user-attachments/assets/20ee7627-1db5-4a69-aa05-d701c8b19f93" />
-
-
-| RL 구성 요소 | 프로젝트에서의 의미 |
-|---|---|
-| **Agent** | 자율주행 차량 (AV) |
-| **Environment** | SUMO 도로 환경 |
-| **Observation** | AV가 관측하는 주변 차량 및 도로 정보 |
-| **Action** | Acceleration / Lane Change |
-| **Reward** | 안전하고 효율적인 주행에 대한 점수 |
-| **Policy** | Observation을 보고 Action을 결정하는 모델 |
-
-즉,
-
-```text
-AV가 현재 상황을 보고
-        ↓
-행동을 선택하고
-        ↓
-SUMO에서 실제로 움직인 뒤
-        ↓
-그 결과에 대한 Reward를 받으며
-        ↓
-더 좋은 행동을 선택하도록 학습
-```
-
-하는 과정임.
-
----
-
-# 3. Behavior Cloning과 무엇이 다른가?
-
-<img width="700" alt="image" src="https://github.com/user-attachments/assets/fb3a6336-9798-428e-b63f-fb614328402f" />
-
-
-Behavior Cloning은 Dataset에 있는 Action을 따라 하도록 학습함.
-
-```text
-Observation
-    ↓
-BC Policy
-    ↓
-Expert Action과 비교
-    ↓
-Supervised Learning
-```
-
-반면 Reinforcement Learning은 정답 Action이 주어지지 않음.
-
-```text
-Observation
-    ↓
-RL Policy
-    ↓
-Action
-    ↓
-SUMO
-    ↓
-Reward
-    ↓
-Policy Update
-```
-
-| | Behavior Cloning | Reinforcement Learning |
-|---|---|---|
-| 학습 기준 | Expert Action | Reward |
-| Environment interaction | 학습 중 필요 없음 | 필요 |
-| Dataset | 미리 수집 | 학습 중 생성 가능 |
-| 목표 | Expert 행동 모방 | 높은 누적 Reward 획득 |
-
----
-
-# 4. RL에서 저장하는 데이터
-
-한 번의 Environment Step에서 다음과 같은 Transition이 만들어짐.
-
-```text
-Observation
-Action
-Reward
-Next Observation
-Done
-```
-
-즉,
-
-```text
-(o_t, a_t, r_t, o_(t+1), done)
-```
-
-형태
-
-예:
-
-| Step | Observation | Action | Reward | Next Observation | Done |
-|---:|---|---|---:|---|---|
-| 0 | `[0.41, 0.72, ...]` | `[0.31, 0]` | 0.14 | `[0.43, 0.68, ...]` | False |
-| 1 | `[0.43, 0.68, ...]` | `[0.12, 0]` | 0.17 | `[0.46, 0.61, ...]` | False |
-| 2 | `[0.46, 0.61, ...]` | `[-0.25, -1]` | -0.30 | `[0.44, 0.55, ...]` | False |
-
----
-
-# 5. 한 번의 RL Step
-
-한 timestep에서 수행되는 과정은 다음과 같음.
-
-```text
-1. Observation o_t 생성
-        ↓
-2. Policy가 Action a_t 선택
-        ↓
-3. Action을 SUMO에 적용
-        ↓
-4. simulationStep()
-        ↓
-5. Reward r_t 계산
-        ↓
-6. Next Observation o_(t+1) 생성
-        ↓
-7. Done 여부 확인
-```
-
-Python에서는 다음과 같은 형태가 됨.
+BC는 `train_bc.py`의 실행 옵션으로 설정하지만, 현재 RL 학습은 `train.py` 상단의 변수와 `HPARAMS`를 수정함. 다음은 현재 설정 중 일부를 발췌한 코드임. 실제 파일에서는 기존 설정의 필요한 값만 변경함.
 
 ```python
-observation = env.get_observation()
+TOTAL_TIMESTEPS = 200_000
 
-action = policy(observation)
-
-next_observation, reward, done = env.step(action)
-```
-
-이 과정이 Episode가 끝날 때까지 반복됨.
-
----
-
-# 6. Episode란?
-
-**Episode**는 하나의 주행 시작부터 종료까지의 과정임.
-
-예를 들어 다음 상황에서 Episode를 종료할 수 있음.
-
-```text
-Collision
-→ Episode 종료
-
-Maximum Simulation Step 도달
-→ Episode 종료
-
-목적지 도착
-→ Episode 종료
-```
-
-하나의 Episode에서는 다음과 같은 trajectory가 만들어짐.
-
-```text
-o_0
- ↓
-a_0
- ↓
-r_0
- ↓
-o_1
- ↓
-a_1
- ↓
-r_1
- ↓
-...
-```
-
----
-
-# 7. Reward가 잘못 설계되면 어떻게 되나요?
-
-RL Agent는 우리가 의도한 행동이 아니라  
-**Reward를 가장 많이 받는 행동**을 학습함.
-
-예를 들어 속도 Reward만 너무 크게 주면
-
-```text
-높은 속도
-      ↓
-높은 Reward
-      ↓
-위험한 주행
-      ↓
-충돌 증가
-```
-
-가 발생할 수 있고,
-
-반대로 Collision Penalty가 지나치게 크고 진행 Reward가 너무 작다면
-
-```text
-움직이지 않음
-      ↓
-충돌하지 않음
-      ↓
-상대적으로 높은 Return
-```
-
-처럼 차량이 거의 움직이지 않는 Policy를 학습할 수도 있음.
-
-따라서 학습 결과가 이상하다면 **알고리즘뿐 아니라 Reward도 확인**해야 함.
-
----
-
-# 8. Policy Model
-
-RL Policy도 BC와 마찬가지로 Observation을 입력으로 받습니다.
-
-```text
-Observation
-      ↓
-     MLP
-      ↓
-    Action
-```
-
-하지만 BC와 달리 Expert Action을 직접 맞추는 것이 아니라  
-RL 알고리즘의 학습 규칙에 따라 Policy가 업데이트됨.
-
----
-
-# 9. Exploration이 필요한 이유
-
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/ad2b558c-e986-4103-8654-ae3a1286c314" />
-
-BC는 Expert Action을 그대로 학습하지만, RL은 Agent가 직접 행동을 시도해야 함.
-
-초기 Policy는 아직 학습되지 않았기 때문에 다양한 Action을 시도하면서
-
-```text
-어떤 행동이 좋은 Reward를 주는지
-```
-
-알아내야 합니다.
-
-이를 **Exploration**이라고 함.
-
-예를 들어,
-
-```text
-현재 Observation
-      ↓
-Policy Action
-      +
-Exploration
-      ↓
-실제 Action
-```
-
-과 같은 형태로 학습할 수 있음.
-
-초기에는 다양한 행동을 시도하고, 학습이 진행될수록 더 좋은 행동을 선택하도록 만드는 것이 일반적임.
-
----
-
-# 10. Replay Buffer
-
-<img width="700" alt="image" src="https://github.com/user-attachments/assets/5d548eea-3e65-4b00-b057-52ebbad1dcad" />
-
-
-DDPG, TD3, SAC와 같은 **Off-policy RL**에서는 학습 중 생성된 Transition을 Replay Buffer에 저장할 수 있음.
-
-```text
-SUMO Interaction
-       ↓
-(o, a, r, o', done)
-       ↓
-Replay Buffer
-       ↓
-Random Batch Sampling
-       ↓
-Model Update
-```
-
-```python
-replay_buffer.add(
-    observation,
-    action,
-    reward,
-    next_observation,
-    done,
+# HPARAMS 중 주요 항목 발췌
+HPARAMS = dict(
+    lr=1e-3,
+    n_steps=2048,
+    n_epochs=10,
+    minibatch_size=64,
+    gamma=0.99,
+    gae_lambda=0.95,
+    clip_eps=0.2,
+    hidden_sizes=(256, 256),
+    activation="relu",
+    policy_type="hybrid",
+    seed=0,
+    device="auto",
 )
 ```
 
-학습할 때는 저장된 데이터 중 일부를 Batch로 꺼내고,
+| 설정 | 코드에서 활용되는 방식 |
+|---|---|
+| `TOTAL_TIMESTEPS` | `learn()`에 전달하는 총 학습 환경 스텝 목표 |
+| `lr` | PPO 내부 Adam optimizer의 학습률 |
+| `n_steps` | 업데이트 전 수집하는 환경 스텝 수 |
+| `n_epochs` | 수집한 데이터에 대한 업데이트 반복 횟수 |
+| `minibatch_size` | 한 번의 optimizer 업데이트에 사용하는 sample 수 |
+| `hidden_sizes`, `activation` | 신경망 은닉층 크기 및 활성화 함수 |
+| `policy_type` | 기본 `hybrid`: 가감속 연속 출력과 차선 선택 이산 출력 |
+| `seed` | NumPy와 PyTorch 난수 seed |
+| `device` | `auto`는 CUDA가 있으면 CUDA, 없으면 CPU 선택 |
+
+현재 PPO의 `auto`는 BC와 달리 MPS를 자동 선택하지 않음.
 
 ```python
-batch = replay_buffer.sample(batch_size)
+EVAL_INTERVAL = 5
+EVAL_EPISODES = 5
+LOG_INTERVAL = 1
+RESULTS_DIR = "results"
+RUN_NAME = None
 ```
 
-BC에서 Dataset을 미리 만들어 사용했다면,
+`EVAL_INTERVAL=5`는 모델 업데이트 5회마다 평가한다는 의미임. 평가 한 번에 `EVAL_EPISODES`만큼 주행함. `LOG_INTERVAL`은 콘솔 출력 주기이며 TensorBoard 기록은 매 업데이트 수행함.
 
-RL에서는 **주행하면서 Dataset이 계속 만들어진다**고 생각하면 됨.
+`RUN_NAME=None`이면 폴더 이름을 자동 생성함. 실험 이름을 지정하려면 `RUN_NAME="exp_lr1e-4"`처럼 수정하되 기존 결과와 겹치지 않는 이름을 사용함.
 
----
+## 4. Reward 설정을 환경에 전달하기
 
-# 11. Training과 Evaluation을 구분하기
+기본 reward는 `env/mdp_config.py`에 있으며, 실험에서 바꿀 값은 `train.py`의 `REWARD_OVERRIDES`에 작성함.
 
-학습 중에는 Exploration이 포함될 수 있지만,
+```python
+REWARD_OVERRIDES = dict(
+    speed_weight=0.1,
+    collision_penalty=5.0,
+    arrival_bonus=2.0,
+    close_gap_threshold=6.0,
+    close_gap_penalty=0.1,
+    blocked_penalty=0.05,
+    blocked_gap=20.0,
+    blocked_speed_frac=0.7,
+    lane_change_penalty=0.0,
+    invalid_action_penalty=0.0,
+)
+REWARD = {**REWARD_DEFAULTS, **REWARD_OVERRIDES}
+```
 
-하지만 Evaluation에서는 가능한 한 **학습된 Policy 자체의 성능**을 확인해야 함.
+합친 `REWARD`를 환경 생성 시 전달하고, `env/sumo_env.py`에서 실제 스텝별 보상을 계산함. `test.py`도 현재 `train.py`의 `REWARD`를 가져옴. 보상 계수를 바꾼 실험은 평가 reward뿐 아니라 충돌률·완주율을 함께 비교함.
+
+## 5. 도로·환경·PPO 에이전트 생성
+
+`train.py`는 먼저 도로 설정을 읽어 SUMO 파일을 생성함.
+
+```python
+sumocfg = road_builder.build(
+    ROAD, EGO, TRAFFIC,
+    os.path.join(BASE, "env", "sumo"),
+)
+```
+
+생성한 설정 파일 경로와 관측·행동·reward 설정으로 환경을 생성함.
+
+```python
+env = SumoHighwayEnv(
+    cfg_path=sumocfg,
+    road=ROAD, ego=EGO,
+    mdp_sim=SIMULATION, mdp_obs=OBSERVATION,
+    action=ACTION, reward=REWARD,
+    traffic=TRAFFIC,
+    gui=False,
+)
+```
+
+이어서 `utils/buffer.py`의 `RolloutBuffer`와 `algorithms/ppo.py`의 `PPO`를 생성함.
+
+```python
+from algorithms.ppo import PPO
+from utils.buffer import RolloutBuffer
+
+buffer = RolloutBuffer()
+agent = PPO(
+    obs_dim=env.observation_space.shape[0],
+    act_dim=env.action_space.shape[0],
+    buffer=buffer,
+    **HPARAMS,
+)
+```
+
+관측·행동 차원은 환경에서 읽고, `HPARAMS`는 PPO 생성자의 인자로 전달함. `RolloutBuffer`는 관측, 행동, 행동의 log probability, reward, 가치 추정값, 종료 여부를 보관함.
+
+## 6. Policy 신경망은 어디에 있나요?
+
+`algorithms/ppo.py`는 `policy_type="hybrid"`일 때 `utils/networks.py`의 `HybridActorCritic`을 생성함. 현재 설정은 관측을 두 개의 256차원 ReLU 은닉층에 통과시키고 세 출력 head로 전달함.
+
+```python
+# utils/networks.py: HybridActorCritic 출력 head
+self.mu_head = orthogonal_init(nn.Linear(last, 1), gain=0.01)
+self.lane_head = orthogonal_init(nn.Linear(last, 3), gain=0.01)
+self.v_head = orthogonal_init(nn.Linear(last, 1), gain=1.0)
+```
+
+`mu_head`는 가감속 평균, `lane_head`는 세 차선 명령의 점수, `v_head`는 가치 추정값을 출력함. 최종 행동은 `[accel_raw, lane_change_raw]`이며 환경이 실제 차량 제어에 사용함.
+
+학습 행동은 `PPO.act()`로 선택하고 평가에서는 `PPO.predict(obs, deterministic=True)`를 사용함. 기본 hybrid 모델의 평가 행동은 가감속 평균과 가장 점수가 높은 차선 명령으로 결정함.
+
+## 7. PPO 학습 루프 읽기
+
+### 7.1 train.py에서 learn() 호출
+
+```python
+agent.learn(
+    env,
+    total_timesteps=TOTAL_TIMESTEPS,
+    logger=logger,
+    log_interval=LOG_INTERVAL,
+    eval_interval=EVAL_INTERVAL,
+    eval_episodes=EVAL_EPISODES,
+)
+```
+
+실제 학습은 `algorithms/ppo.py`의 `PPO.learn()`이 담당함. 다음은 핵심 순서의 발췌임.
+
+```python
+obs, last_value, finished = self.collect_rollout(
+    env, obs, logger=logger, ep_stats=ep_stats,
+)
+advantages, returns = self.buffer.compute_gae(
+    last_value, self.gamma, self.gae_lambda,
+)
+stats = self.update(advantages, returns)
+```
+
+`collect_rollout()`은 `n_steps`만큼 주행하고, `utils/buffer.py`의 `compute_gae()`는 정책·가치 학습에 사용할 값을 계산하며, `update()`는 신경망을 수정함. 총 학습 스텝 목표에 도달할 때까지 반복함. `n_steps` 단위로 수집하므로 최종 스텝 수는 목표를 조금 넘을 수 있음.
+
+### 7.2 collect_rollout(): SUMO와 상호작용
+
+```python
+action, log_prob, value = self.act(obs)
+next_obs, reward, terminated, truncated, _ = env.step(action)
+
+self.num_timesteps += 1
+ep_stats[0] += reward
+ep_stats[1] += 1
+```
+
+`env.step()`은 다음 관측, reward, 종료 여부 두 가지, 부가 정보를 반환함. 충돌·도착 등의 종료는 `terminated`, 시간 제한 종료는 `truncated`로 구분함. 실제 저장 코드는 시간 제한 종료에 대한 보정을 포함함.
+
+```python
+stored_reward = reward
+if truncated and not terminated:
+    stored_reward += self.gamma * self.get_value(next_obs)
+
+self.buffer.add(
+    obs, action, log_prob, stored_reward, value, terminated,
+)
+```
+
+에피소드가 끝나면 reward 합과 길이를 기록하고 `env.reset()`으로 다음 주행을 시작함. 한 rollout에 여러 에피소드가 들어갈 수도 있고 에피소드가 다음 rollout까지 이어질 수도 있음. 다음 rollout 시작 시 `self.buffer.clear()`로 이전 수집 기록을 비움.
+
+### 7.3 update(): loss 계산과 optimizer 실행
+
+`algorithms/ppo.py`의 `update()`는 저장한 데이터를 미니배치로 나누고 현재 모델로 행동을 다시 평가함.
+
+```python
+log_prob, entropy, value = self.policy.evaluate_actions(
+    obs_t[mb], act_t[mb],
+)
+ratio = torch.exp(log_prob - old_log_prob_t[mb])
+
+surrogate_1 = ratio * adv_t[mb]
+surrogate_2 = torch.clamp(
+    ratio, 1 - self.clip_eps, 1 + self.clip_eps,
+) * adv_t[mb]
+
+policy_loss = -torch.min(surrogate_1, surrogate_2).mean()
+value_loss = ((value - ret_t[mb]) ** 2).mean()
+entropy_loss = -entropy.mean()
+
+loss = (
+    policy_loss
+    + self.value_coef * value_loss
+    + self.entropy_coef * entropy_loss
+)
+```
+
+`policy_loss`는 행동 선택 모델, `value_loss`는 가치 출력의 학습에 사용함. 현재 hybrid 설정에서는 차선 head 항도 추가됨.
+
+```python
+if self.lane_entropy_coef > 0 and hasattr(self.policy, "lane_entropy"):
+    loss = loss - (
+        self.lane_entropy_coef
+        * self.policy.lane_entropy(obs_t[mb]).mean()
+    )
+```
+
+BC와 마찬가지로 loss를 역전파하고 optimizer를 실행하며, PPO에서는 gradient 크기 제한도 적용함.
+
+```python
+self.optimizer.zero_grad()
+loss.backward()
+nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+self.optimizer.step()
+```
+
+미니배치 업데이트를 `n_epochs`번 반복하고 평균 loss 및 진단값을 로거에 전달함.
+
+## 8. 콘솔과 TensorBoard에서 학습 확인
+
+콘솔 출력 예시이며 수치는 실행마다 달라짐.
 
 ```text
-Training
-Policy + Exploration
-        ↓
-Action
+[update   11] steps=  22528  ep_rew_mean=18.22  std=0.5909  policy_loss=-0.005901  value_loss=0.4878 ...
+```
+
+`steps`는 누적 학습 환경 스텝 수, `update`는 모델 업데이트 횟수임. `ep_rew_mean`은 최근 완료된 최대 20개 학습 에피소드의 평균 reward이며, 완료된 에피소드가 없으면 `nan`이 표시될 수 있음.
+
+학습 중 다른 터미널에서 같은 가상환경을 활성화하고 프로젝트 최상위 폴더로 이동한 뒤 실행함. 아래 `cd`는 본인의 실제 경로로 변경함.
+
+```bash
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate sumo-rl
+cd /프로젝트의/실제/경로/Artificial-Intelligence-and-Control-for-Autonomous-Driving
+tensorboard --logdir results
+```
+
+브라우저에서 <http://localhost:6006>에 접속하고 Scalars를 확인함. x축은 BC의 epoch와 달리 누적 학습 환경 스텝 수임.
+
+| TensorBoard 태그 | 내용 |
+|---|---|
+| `train/policy_loss` | 정책 loss |
+| `train/value_loss` | 가치 출력 loss |
+| `train/ep_rew_mean` | 최근 최대 20개 학습 에피소드의 평균 reward |
+| `episode/return`, `episode/length` | 개별 학습 에피소드의 reward 합과 스텝 수 |
+| `eval/ep_return` | 평가 에피소드 평균 reward |
+| `eval/collision_rate`, `eval/success_rate` | 평가 충돌률·완주율 |
+| `eval/mean_speed`, `eval/lane_changes` | 평가 평균 속도·에피소드당 실제 차선 변경 횟수 |
+| `train/entropy`, `train/approx_kl`, `train/clip_frac` | PPO 업데이트 진단값 |
+| `train/p_lane_change` | hybrid 모델의 평균 차선 변경 선택 확률 |
+
+PPO loss는 BC의 MSE와 목적이 다르므로 loss 감소만으로 주행 성능을 판단하지 않음. 평가 reward와 충돌률·완주율을 함께 확인함.
+
+`No dashboards are active`가 표시되면 로그 경로를 확인함. 상대경로 `results`는 TensorBoard를 실행한 터미널의 현재 폴더를 기준으로 해석됨. 실제 절대경로를 지정해도 됨.
+
+```bash
+tensorboard --logdir="/프로젝트의/실제/절대경로/results" --reload_interval=2
+```
+
+`Retrying in 1 seconds`는 에피소드 초기화 시 새 SUMO에 TraCI가 연결을 재시도하는 메시지임. 이후 update와 steps가 증가한다면 학습이 진행 중임.
+
+## 9. 주기적 평가와 저장 결과
+
+`PPO.learn()`은 설정한 업데이트 주기마다 `utils/evaluator.py`의 함수를 호출함.
+
+```python
+m = evaluate_policy(self, env, n_episodes=eval_episodes)
+logger.log_eval(
+    self.num_timesteps, m.as_dict(), m.summary(), eval_episodes,
+)
+```
+
+평가 함수는 `predict(obs, deterministic=True)`로 행동을 결정하고 여러 에피소드의 충돌률·완주율·평균 속도·reward 등을 기록함. 같은 환경 객체를 사용하므로 평가 후 학습 환경을 reset함.
+
+학습 종료 또는 Ctrl+C 중단 시 `train.py`의 `finally` 블록에서 환경·로거를 닫고 모델·설정을 저장함.
+
+```python
+env.close()
+logger.close()
+model_path = os.path.join(run_dir, "model.pt")
+agent.save(model_path)
+snapshot_configs(run_dir)
 ```
 
 ```text
-Evaluation
-Learned Policy
-      ↓
-Action
+results/run_YYYYMMDD_HHMMSS/
+├── model.pt
+├── training_log.csv
+├── eval_log.csv
+├── train.py
+├── road_config.py
+├── mdp_config.py
+└── tb/
+    └── events.out.tfevents.*
 ```
 
-따라서 Evaluation 시에는
+| 파일 | 내용 |
+|---|---|
+| `model.pt` | 종료 시점 정책 신경망의 `state_dict` |
+| `training_log.csv` | 업데이트별 스텝 수, 평균 reward, loss·진단값 |
+| `eval_log.csv` | 평가 결과. 평가가 수행된 경우 생성 |
+| 복사된 Python 설정 파일 | 해당 실험의 학습·도로·MDP 설정 |
+| `tb/events.out.tfevents.*` | 학습 중 기록하는 TensorBoard 이벤트 |
 
-- Exploration noise 제거
-- 동일한 Evaluation 조건 사용
-- 여러 Episode 반복
+CSV는 `logger.close()` 또는 `save_csv()`에서 저장함. PPO의 `model.pt`는 BC처럼 최저 validation loss 모델을 선택한 것이 아니라 종료 시점 모델임. optimizer 상태를 포함한 학습 재개용 체크포인트는 아님.
 
-등을 권장.
+## 10. 저장한 모델로 주행 평가하기
 
----
+학습 종료 시 출력되는 실제 모델 경로를 사용함. 아래 폴더 이름은 본인의 결과 폴더로 변경함.
 
-# 12. 무엇을 평가하면 되나요?
-
-BC와 동일하게 복잡한 지표를 많이 사용할 필요는 없음.
-
-## 1. Collision Rate
-
-```text
-Collision Rate
-=
-충돌 Episode 수
-/
-전체 Evaluation Episode 수
+```bash
+python test.py results/run_YYYYMMDD_HHMMSS/model.pt --episodes 5
 ```
 
-프로젝트 기본 목표:
+화면 없이 수치만 평가하려면 다음과 같이 실행함.
 
-> **Collision Rate ≤ 5%**
-
----
-
-## 2. Episode Reward
-
-한 Episode 동안 받은 Reward의 합을 비교할 수도 있음.
-
-```text
-Episode Return
-=
-r_0 + r_1 + r_2 + ... + r_T
+```bash
+python test.py results/run_YYYYMMDD_HHMMSS/model.pt --algorithm ppo --episodes 5 --nogui
 ```
 
-학습이 진행되면서 Episode Reward가 증가하는지 확인.
+`test.py`는 기본적으로 모델 유형을 자동 판별함. 과거 모델 평가 시 현재 네트워크 설정과 학습 당시 구조가 맞는지 확인함. 도로나 reward를 변경한 경우에도 저장된 설정 파일과 현재 파일을 비교함.
 
----
-
-## 3. 주행 결과
-
-`sumo-gui`에서 실제로 확인.
-
-- 차량이 정상적으로 진행하는가?
-- 충돌이 자주 발생하지 않는가?
-- 위험하게 앞 차량에 접근하지 않는가?
-- 불필요한 가속 / 감속을 반복하지 않는가?
-- 차선 변경이 정상적인가?
-- 도로 구조를 정상적으로 통과하는가?
-
----
-
-# 13. Learning Curve
-
-RL 학습 과정에서는 Reward의 변화를 그래프로 확인하는 것이 중요함.
-
-예:
-
-```text
-Episode
-   ↓
-Episode Reward
-```
-
-학습이 정상적으로 진행된다면 전체적으로
-
-```text
-낮은 Reward
-     ↓
-학습 진행
-     ↓
-높은 Reward
-```
-
-방향으로 변화하는 것을 기대.
-
-다만 RL은 학습 과정의 변동성이 크기 때문에 Reward가 매 Episode마다 일정하게 증가하지는 않음.
-
----
-
-# 14. 프로젝트에서 중요한 것
-
-이번 프로젝트에서 목표는 새로운 RL 알고리즘을 개발하는 것이 아님.
-
-기본 제공 알고리즘을 사용해도 충분함.
-
-더 중요한 것은
-
-```text
-직접 구축한 Road Environment
-+
-정상적인 Observation / Action / Reward
-+
-안정적인 SUMO Interaction
-+
-학습된 AV의 실제 주행
-```
+실습에서는 학습률이나 reward 계수를 바꾼 모델을 서로 다른 결과 폴더에 저장하고 TensorBoard 평가 지표와 실제 SUMO 주행을 함께 비교함. 충돌·완주 여부, 앞차 접근 거리, 불필요한 가감속, 실제 차선 변경을 확인함.
