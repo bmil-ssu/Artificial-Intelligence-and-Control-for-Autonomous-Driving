@@ -31,6 +31,8 @@
 
 - [모방학습 기반 자율주행 의사결정 모델 학습](./project_materials/3_Model_Training_BC.md)
 
+### 팀별 진행 (자율 building)
+
 ### 4. Model Training — Reinforcement Learning
 
 - [강화학습 기반 자율주행 의사결정 모델 학습](./project_materials/4_Model_Training_RL.md)
