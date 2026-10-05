@@ -309,6 +309,9 @@ tensorboard --logdir results
 
 브라우저에서 <http://localhost:6006>에 접속하고 Scalars를 확인함. x축은 BC의 epoch와 달리 누적 학습 환경 스텝 수임.
 
+<img width="800" alt="스크린샷 2026-10-05 오후 11 30 07" src="https://github.com/user-attachments/assets/b001698e-379f-4774-9c9f-f0acc3869436" />
+
+
 | TensorBoard 태그 | 내용 |
 |---|---|
 | `train/policy_loss` | 정책 loss |
