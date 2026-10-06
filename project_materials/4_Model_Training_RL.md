@@ -55,7 +55,7 @@ conda activate sumo-rl
 python train.py
 ```
 
-<img width="400" alt="학습 실행 화면" src="https://github.com/user-attachments/assets/6331be7b-8590-4729-b74c-2edff8be8b6e" />
+<img width="800" alt="학습 실행 화면" src="https://github.com/user-attachments/assets/6331be7b-8590-4729-b74c-2edff8be8b6e" />
 
 현재 학습 환경은 `gui=False`이므로 SUMO 창이 뜨지 않음. 주행 화면은 학습 후 `test.py`로 확인함.
 
